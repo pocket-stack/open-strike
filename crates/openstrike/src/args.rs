@@ -24,6 +24,9 @@ pub struct Args {
     pub bots: usize,
     /// Quit the windowed app after N seconds (CI smoke test).
     pub auto_quit: Option<f32>,
+    /// Screenshot mode: stage a combat frame with the JSX HUD composited
+    /// (boots the guest, spawns bots, fires). Plain mode is a clean vista.
+    pub hud: bool,
 }
 
 impl Default for Args {
@@ -42,6 +45,7 @@ impl Default for Args {
             debug_overlay: false,
             bots: 3,
             auto_quit: None,
+            hud: false,
         }
     }
 }
@@ -83,6 +87,7 @@ impl Args {
                 "--debug" => a.debug_overlay = true,
                 "--bots" => a.bots = value("--bots")?.parse()?,
                 "--auto-quit" => a.auto_quit = Some(value("--auto-quit")?.parse()?),
+                "--hud" => a.hud = true,
                 "--help" | "-h" => {
                     println!("{USAGE}");
                     std::process::exit(0);

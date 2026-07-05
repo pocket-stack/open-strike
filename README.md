@@ -1,5 +1,17 @@
 # OpenStrike
 
+<p align="center">
+  <img src="docs/hero.jpg" width="820" alt="OpenStrike rendering de_inferno in Pocket3D — enemies advancing across a stone courtyard with the PocketJS HUD (health, ammo, hostiles)." />
+</p>
+
+<p align="center">
+  <img src="docs/dust2.jpg" width="270" alt="OpenStrike on de_dust2" />
+  <img src="docs/dust.jpg" width="270" alt="OpenStrike on de_dust" />
+  <img src="docs/office.jpg" width="270" alt="OpenStrike on cs_office" />
+</p>
+
+<p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.</em></p>
+
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
 tables, difficulty, and the entire HUD — is JavaScript running in an embedded

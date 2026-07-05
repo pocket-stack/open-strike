@@ -82,19 +82,69 @@ fn aim_at(game: &mut OpenStrike, target: Vec3) {
     game.player.pitch = d.y.atan2((d.x * d.x + d.z * d.z).sqrt());
 }
 
-/// One-frame screenshot mode (map viewer).
+/// The chest of the nearest living bot (for aiming a staged shot).
+fn nearest_bot_chest(game: &OpenStrike) -> Option<Vec3> {
+    let eye = game.player.eye();
+    game.bots
+        .iter()
+        .filter(|b| b.alive())
+        .min_by(|a, b| {
+            let da = (a.state.pos - eye).length_squared();
+            let db = (b.state.pos - eye).length_squared();
+            da.partial_cmp(&db).unwrap()
+        })
+        .map(|b| b.state.pos + Vec3::Y * 8.0)
+}
+
+/// One-frame screenshot mode.
+///
+/// Plain: a clean architectural vista of the map (no bots, no HUD).
+/// `--hud`: a staged combat frame — the guest boots, bots close in, the
+/// player fires, and the JSX HUD is composited (the "PocketJS as embedded
+/// overlay" showcase).
 pub fn run_screenshot(mut game: OpenStrike, args: &Args) -> Result<()> {
     let mut hl = Headless::new(args.size)?;
     game.upload_world(&hl.gpu, &hl.renderer);
     game.phase = Phase::Live;
-    if args.pos.is_none() {
-        settle(&mut game, 48);
-    }
     let path = args
         .screenshot
         .clone()
         .context("--screenshot needs a path")?;
-    hl.shot(&mut game, 0.5, &path)
+
+    if !args.hud {
+        // Clean vista: clear bots, settle, look slightly down the map.
+        game.bots.clear();
+        if args.pos.is_none() {
+            settle(&mut game, 48);
+        }
+        return hl.shot(&mut game, 0.5, &path);
+    }
+
+    // Staged combat with the HUD. Boot the guest so the shipped rules + HUD
+    // are what gets captured.
+    let mut strike = StrikeGuest::boot(args.size)?;
+    place_bots_near_player(&mut game, 3);
+    let mut input = Input::default();
+    // ~1.6 s of approach: bots chase and animate, the player tracks the
+    // nearest one. Kept short so the player stays alive (viewmodel visible).
+    for _ in 0..(64 * 8 / 5) {
+        if let Some(target) = nearest_bot_chest(&game) {
+            aim_at(&mut game, target);
+        }
+        game.tick(TICK, &input);
+        strike.turn(&mut game)?;
+        if !game.player.alive {
+            break;
+        }
+    }
+    // Fire on the capture tick for muzzle flash + tracer + recoil.
+    if let Some(target) = nearest_bot_chest(&game) {
+        aim_at(&mut game, target);
+    }
+    input.inject_mouse_button(MouseButton::Left, true);
+    game.tick(TICK, &input);
+    strike.turn(&mut game)?;
+    hl.shot_with_hud(&mut game, Some(&mut strike), 3.0, &path)
 }
 
 pub fn run_script(game: OpenStrike, name: &str, args: &Args) -> Result<()> {
