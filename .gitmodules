@@ -1,0 +1,4 @@
+[submodule "vendor/pocketjs"]
+	path = vendor/pocketjs
+	url = https://github.com/pocket-stack/pocketjs.git
+	branch = jealous-burn

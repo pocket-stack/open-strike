@@ -1,0 +1,13 @@
+# build outputs
+/target
+/dist
+
+# copyrighted game data — provide your own maps (see README)
+/assets/maps/
+/assets/wads/
+
+# local tooling
+.DS_Store
+
+# js deps (bun run setup re-creates the solid-js link)
+/node_modules
