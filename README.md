@@ -18,7 +18,7 @@ tables, difficulty, and the entire HUD — is JavaScript running in an embedded
 QuickJS guest. OpenStrike is the first specialized game runtime of
 [PocketJS](https://github.com/pocket-stack/pocketjs); the architecture it
 instantiates is documented in the engine repo's
-[RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/jealous-burn/RUNTIMES.md).
+[RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
 
 ```
 crates/openstrike        the FPS core (Rust)
