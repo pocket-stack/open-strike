@@ -1,12 +1,12 @@
 # OpenStrike
 
 <p align="center">
-  <img src="docs/hero.jpg" width="820" alt="OpenStrike rendering de_inferno in Pocket3D — enemies advancing across a stone courtyard with the PocketJS HUD (health, ammo, hostiles)." />
+  <img src="docs/hero.jpg" width="820" alt="OpenStrike rendering de_dust in Pocket3D — a wide sunlit desert courtyard with arches, crates and an open sky." />
 </p>
 
 <p align="center">
   <img src="docs/dust2.jpg" width="270" alt="OpenStrike on de_dust2" />
-  <img src="docs/dust.jpg" width="270" alt="OpenStrike on de_dust" />
+  <img src="docs/inferno.jpg" width="270" alt="OpenStrike on de_inferno" />
   <img src="docs/office.jpg" width="270" alt="OpenStrike on cs_office" />
 </p>
 
