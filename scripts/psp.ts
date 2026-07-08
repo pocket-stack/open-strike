@@ -26,6 +26,7 @@ const mapName = flag("map", "de_dust2");
 const release = argv.includes("-r") || argv.includes("--release");
 const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
+if (argv.includes("--bench")) features.push("bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
 const bsp = `${mapsRoot}/maps/${mapName}.bsp`;

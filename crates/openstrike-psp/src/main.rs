@@ -31,7 +31,9 @@ use psp::sys::DisplaySetBufSync;
 #[cfg(feature = "capture")]
 use psp::sys::DisplayPixelFormat;
 #[cfg(feature = "capture")]
-use psp::sys::{CtrlButtons, IoOpenFlags};
+use psp::sys::CtrlButtons;
+#[cfg(any(feature = "capture", feature = "bench"))]
+use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 use psp::Align16;
 
@@ -164,7 +166,11 @@ unsafe fn run() {
 
     // ---- Frame loop (pipelined present, one tick per vblank) ----
     let mut frame_count: u32 = 0;
+    #[cfg(feature = "bench")]
+    let mut bench = Bench::new();
     loop {
+        #[cfg(feature = "bench")]
+        let bench_t0 = bench_now();
         sys::sceCtrlReadBufferPositive(&mut pad_data, 1);
         #[cfg_attr(not(feature = "capture"), allow(unused_mut))]
         let mut sample = (pad_data.buttons, pad_data.lx, pad_data.ly);
@@ -201,9 +207,15 @@ unsafe fn run() {
         };
 
         // Pipelined present: wait out frame N-1, show it, then record N.
+        #[cfg(feature = "bench")]
+        let bench_before_sync = bench_now();
         sys::sceGuSync(GuSyncMode::Finish, GuSyncBehavior::Wait);
+        #[cfg(feature = "bench")]
+        let bench_after_sync = bench_now();
         sys::sceDisplayWaitVblankStart();
         sys::sceGuSwapBuffers();
+        #[cfg(feature = "bench")]
+        let bench_after_present = bench_now();
         #[cfg(feature = "capture")]
         if frame_count > 0 {
             cap_dump_frame(frame_count.wrapping_sub(1));
@@ -230,7 +242,135 @@ unsafe fn run() {
         ge::render_over(ffi::ui(), core::slice::from_raw_parts(words_ptr, words_len));
         sys::sceGuFinish();
 
+        #[cfg(feature = "bench")]
+        bench.record(
+            bench_t0,
+            bench_before_sync,
+            bench_after_sync,
+            bench_after_present,
+            world.last_faces,
+            world.last_tris,
+        );
+
         frame_count = frame_count.wrapping_add(1);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bench (hardware smoothness evidence): rolling 300-frame windows appended
+// as JSONL to host0:/OpenStrike-bench.jsonl (PSPLINK) and ms0:. work_us is
+// CPU per frame (present wait excluded); gpu_us is the sceGuSync wait —
+// budget 16667 us each at 60 Hz.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "bench")]
+fn bench_now() -> u64 {
+    unsafe { sys::sceKernelGetSystemTimeWide() as u64 }
+}
+
+#[cfg(feature = "bench")]
+struct Bench {
+    frames: u32,
+    window: u32,
+    work_sum: u64,
+    max_work: u64,
+    gpu_sum: u64,
+    max_gpu: u64,
+    faces_sum: u64,
+    tris_sum: u64,
+}
+
+#[cfg(feature = "bench")]
+impl Bench {
+    fn new() -> Self {
+        // Truncate old logs once at boot.
+        for path in [
+            b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
+            b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
+        ] {
+            unsafe {
+                let fd = sys::sceIoOpen(
+                    path,
+                    IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::TRUNC,
+                    0o777,
+                );
+                if fd.0 >= 0 {
+                    sys::sceIoClose(fd);
+                }
+            }
+        }
+        Self {
+            frames: 0,
+            window: 0,
+            work_sum: 0,
+            max_work: 0,
+            gpu_sum: 0,
+            max_gpu: 0,
+            faces_sum: 0,
+            tris_sum: 0,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn record(
+        &mut self,
+        t0: u64,
+        before_sync: u64,
+        after_sync: u64,
+        after_present: u64,
+        faces: u32,
+        tris: u32,
+    ) {
+        let now = bench_now();
+        let present = after_present.saturating_sub(before_sync);
+        let work = now.saturating_sub(t0).saturating_sub(present);
+        let gpu = after_sync.saturating_sub(before_sync);
+        self.frames += 1;
+        self.work_sum += work;
+        self.max_work = self.max_work.max(work);
+        self.gpu_sum += gpu;
+        self.max_gpu = self.max_gpu.max(gpu);
+        self.faces_sum += faces as u64;
+        self.tris_sum += tris as u64;
+        if self.frames < 300 {
+            return;
+        }
+        let n = self.frames as u64;
+        self.window += 1;
+        let line = alloc::format!(
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{}}}\n",
+            self.window,
+            n,
+            self.work_sum / n,
+            self.max_work,
+            self.gpu_sum / n,
+            self.max_gpu,
+            self.faces_sum / n,
+            self.tris_sum / n,
+        );
+        for path in [
+            b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
+            b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
+        ] {
+            unsafe {
+                let fd = sys::sceIoOpen(
+                    path,
+                    IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::APPEND,
+                    0o777,
+                );
+                if fd.0 >= 0 {
+                    sys::sceIoWrite(fd, line.as_ptr() as *const c_void, line.len());
+                    sys::sceIoClose(fd);
+                }
+            }
+        }
+        self.frames = 0;
+        self.work_sum = 0;
+        self.max_work = 0;
+        self.gpu_sum = 0;
+        self.max_gpu = 0;
+        self.faces_sum = 0;
+        self.tris_sum = 0;
     }
 }
 

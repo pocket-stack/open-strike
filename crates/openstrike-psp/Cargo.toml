@@ -32,3 +32,5 @@ libm = "0.2"
 [features]
 # Deterministic frame-dump build for scripts/e2e-psp.ts (PPSSPPHeadless).
 capture = []
+# Rolling frame-time windows to host0:/OpenStrike-bench.jsonl (hardware).
+bench = []
