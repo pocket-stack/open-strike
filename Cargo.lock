@@ -667,6 +667,9 @@ name = "glam"
 version = "0.33.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f22fb22f065b308be0d8724e3706c7fa3fc2a6c7d6899df4cad7860e7a75436"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "glow"
@@ -1459,11 +1462,21 @@ dependencies = [
  "env_logger",
  "glam",
  "log",
+ "openstrike-core",
  "pocket-mod",
  "pocket-ui-wgpu",
  "pocket3d",
  "pocketjs-core",
  "wgpu",
+]
+
+[[package]]
+name = "openstrike-core"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "libm",
+ "pocket3d-bsp",
 ]
 
 [[package]]

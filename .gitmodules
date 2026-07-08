@@ -2,3 +2,9 @@
 	path = vendor/pocketjs
 	url = https://github.com/pocket-stack/pocketjs.git
 	branch = main
+[submodule "vendor/rust-psp"]
+	path = vendor/rust-psp
+	url = https://github.com/doodlewind/rust-psp.git
+[submodule "vendor/quickjs-rs"]
+	path = vendor/quickjs-rs
+	url = https://github.com/doodlewind/quickjs-rs.git
