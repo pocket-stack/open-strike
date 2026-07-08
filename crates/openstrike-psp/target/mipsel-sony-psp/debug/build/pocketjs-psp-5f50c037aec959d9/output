@@ -1,0 +1,14 @@
+cargo:rustc-env=POCKETJS_APP=
+cargo:rustc-env=POCKETJS_CAPTURE_INPUT=
+cargo:rustc-env=POCKETJS_TRACE=
+cargo:rustc-env=POCKETJS_CAP_START=
+cargo:rustc-env=POCKETJS_CAP_N=
+cargo:rustc-env=POCKETJS_ARENA_BYTES=
+cargo:rustc-env=POCKETJS_BENCH_DUMP_FRAMES=
+cargo:rerun-if-env-changed=POCKETJS_APP
+cargo:rerun-if-env-changed=POCKETJS_CAPTURE_INPUT
+cargo:rerun-if-env-changed=POCKETJS_TRACE
+cargo:rerun-if-env-changed=POCKETJS_CAP_START
+cargo:rerun-if-env-changed=POCKETJS_CAP_N
+cargo:rerun-if-env-changed=POCKETJS_ARENA_BYTES
+cargo:rerun-if-env-changed=POCKETJS_BENCH_DUMP_FRAMES

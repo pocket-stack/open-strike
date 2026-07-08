@@ -1,0 +1,13 @@
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/pocket3d_gu-0bcef9269513aa5c.d: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/camera.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/mesh.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/pool.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/sky.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/texture.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/world.rs
+
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/libpocket3d_gu-0bcef9269513aa5c.rlib: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/camera.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/mesh.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/pool.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/sky.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/texture.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/world.rs
+
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/libpocket3d_gu-0bcef9269513aa5c.rmeta: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/camera.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/mesh.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/pool.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/sky.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/texture.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/world.rs
+
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/lib.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/camera.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/mesh.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/pool.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/sky.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/texture.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-gu/src/world.rs:

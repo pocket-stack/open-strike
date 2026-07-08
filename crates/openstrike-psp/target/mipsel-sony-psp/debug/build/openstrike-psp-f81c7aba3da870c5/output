@@ -1,0 +1,10 @@
+cargo:rerun-if-changed=/Users/evan/code/open-strike/crates/openstrike-psp/../../dist/openstrike.js
+cargo:rerun-if-changed=/Users/evan/code/open-strike/crates/openstrike-psp/../../dist/openstrike.pak
+cargo:rerun-if-env-changed=OPENSTRIKE_PSP_MAP
+cargo:rerun-if-changed=/Users/evan/code/open-strike/dist/de_dust2.p3d
+cargo:rerun-if-env-changed=OPENSTRIKE_PSP_CAPTURE_INPUT
+cargo:rustc-env=OPENSTRIKE_PSP_CAPTURE_INPUT=
+cargo:rerun-if-env-changed=OPENSTRIKE_PSP_CAP_START
+cargo:rustc-env=OPENSTRIKE_PSP_CAP_START=
+cargo:rerun-if-env-changed=OPENSTRIKE_PSP_CAP_N
+cargo:rustc-env=OPENSTRIKE_PSP_CAP_N=
