@@ -113,6 +113,29 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
   rules), and verify the automatic next round. Screenshots include the HUD.
 - `lose` — stand still until the bots win; verify the loss + restart.
 
+## Real PSP hardware
+
+OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
+JSX HUD, rendered by the sceGu backend (`pocket3d-gu`) over a pre-cooked map:
+
+```sh
+git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
+bun scripts/psp.ts                   # bundle → cook de_dust2 → cargo psp EBOOT
+bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
+bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/fire)
+```
+
+Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
+down reloads, d-pad up walks. The build needs the PSP toolchain from the
+PocketJS ecosystem (`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
+
+Measured on hardware (333 MHz, `--bench`, scripted dust2 tour): 6.8–8.4 ms
+CPU per frame against the 16.7 ms budget — a locked 60 fps, with the GE
+under 30 µs. Cooking bakes lightmaps into vertex colors, keeps WAD textures
+as swizzled CLUT8 with full mip chains, and ships PVS so the renderer draws
+only the visible leaves; the 2.7 MB `.p3d` is consumed zero-copy from the
+EBOOT image.
+
 ## Modding, v0.1 shape
 
 The `strike` surface currently speaks: state snapshots (`hp`, `ammo`,
