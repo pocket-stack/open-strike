@@ -1,0 +1,34 @@
+# openstrike-psp — OpenStrike on a real Sony PSP.
+#
+# STANDALONE LONE-BIN CRATE (excluded from the workspace; cargo-psp only).
+# Build + run: `bun scripts/psp.ts` from the repo root.
+#
+# The composition (RUNTIMES.md): openstrike-core (the FPS simulation) +
+# pocket3d-gu (the sceGu world renderer over a cooked .p3d) + the pocketjs-psp
+# host library (arena allocator, QuickJS embedding, `ui` surface, 2D DrawList
+# GE backend, DevTools mailbox) + this crate's `strike` surface and frame
+# loop. The same dist/openstrike.{js,pak} bundle as desktop is embedded — the
+# rules mod and the JSX HUD run unmodified on the handheld.
+#
+# All vendor paths resolve inside vendor/: rust-psp + quickjs-rs are
+# submodules there, and vendor/pocketjs's own relative deps land on them.
+
+[package]
+name = "openstrike-psp"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+psp = { path = "../../vendor/rust-psp/psp", features = ["external-c-heap", "abort-only", "external-global-alloc"] }
+libquickjs-sys = { path = "../../vendor/quickjs-rs/libquickjs-sys" }
+pocketjs-psp = { path = "../../vendor/pocketjs/native" }
+pocketjs-core = { path = "../../vendor/pocketjs/core" }
+pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gu = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-gu" }
+openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
+glam = { version = "0.33", default-features = false, features = ["libm"] }
+libm = "0.2"
+
+[features]
+# Deterministic frame-dump build for scripts/e2e-psp.ts (PPSSPPHeadless).
+capture = []
