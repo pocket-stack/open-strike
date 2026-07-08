@@ -362,8 +362,9 @@ impl Bench {
         }
         let n = self.frames as u64;
         self.window += 1;
+        let arena = unsafe { pocketjs_psp::arena::stats() };
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{}}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -376,6 +377,9 @@ impl Bench {
             self.seg_sums[1] / n,
             self.seg_sums[2] / n,
             self.seg_sums[3] / n,
+            arena.capacity_bytes,
+            arena.bump_bytes,
+            arena.tail_free_bytes,
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
