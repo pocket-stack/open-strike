@@ -43,7 +43,9 @@ await $`bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist`.
 mkdirSync(`${repo}dist`, { recursive: true });
 const p3d = `${repo}dist/${mapName}.p3d`;
 console.log(`openstrike-psp: cooking ${mapName}`);
-await $`cargo run --release -q -p pocket3d-cook -- ${bsp} --wads ${mapsRoot}/support -o ${p3d} --verify`.cwd(
+// 32-unit light grid: samples every other GoldSrc luxel — crisp baked
+// shadows for ~0.9 MB more map (GE headroom is huge, this is cheap).
+await $`cargo run --release -q -p pocket3d-cook -- ${bsp} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
   `${repo}vendor/pocketjs/pocket3d`,
 );
 
