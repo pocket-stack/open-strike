@@ -88,6 +88,8 @@ unsafe fn log_exception(ctx: *mut JSContext) {
 
 unsafe fn run() {
     psp::enable_home_button();
+    // Full clocks (PSPLINK sessions inherit 222 MHz; retail 3D games run 333).
+    sys::scePowerSetClockFrequency(333, 333, 166);
     host::init_graphics(host::GfxConfig { depth: true });
 
     sys::sceCtrlSetSamplingCycle(0);
@@ -184,17 +186,23 @@ unsafe fn run() {
         // Simulation.
         sim.apply_look(tick.look_dx, tick.look_dy);
         sim.tick(&world.map().collision, DT, &tick.sim);
+        #[cfg(feature = "bench")]
+        let bench_after_sim = bench_now();
 
         // Guest turn: facts out, HUD frame, microtasks, intent in.
         if !strike::dispatch(ctx, global, &mut sim) {
             log_exception(ctx);
         }
+        #[cfg(feature = "bench")]
+        let bench_after_dispatch = bench_now();
         let mut args = [JS_NewInt32(ctx, mask)];
         let r = JS_Call(ctx, frame_fn, global, 1, args.as_mut_ptr());
         if JS_ValueGetTag(r) == JS_TAG_EXCEPTION {
             log_exception(ctx);
         }
         JS_FreeValue(ctx, r);
+        #[cfg(feature = "bench")]
+        let bench_after_js = bench_now();
         host::drain_jobs(rt);
         strike::drain(|cmd| sim.apply(cmd, 0));
 
@@ -208,7 +216,9 @@ unsafe fn run() {
 
         // Pipelined present: wait out frame N-1, show it, then record N.
         #[cfg(feature = "bench")]
-        let bench_before_sync = bench_now();
+        let bench_after_ui = bench_now();
+        #[cfg(feature = "bench")]
+        let bench_before_sync = bench_after_ui;
         sys::sceGuSync(GuSyncMode::Finish, GuSyncBehavior::Wait);
         #[cfg(feature = "bench")]
         let bench_after_sync = bench_now();
@@ -245,6 +255,12 @@ unsafe fn run() {
         #[cfg(feature = "bench")]
         bench.record(
             bench_t0,
+            &[
+                ("sim", bench_after_sim),
+                ("dispatch", bench_after_dispatch),
+                ("js", bench_after_js),
+                ("ui", bench_after_ui),
+            ],
             bench_before_sync,
             bench_after_sync,
             bench_after_present,
@@ -278,6 +294,7 @@ struct Bench {
     max_gpu: u64,
     faces_sum: u64,
     tris_sum: u64,
+    seg_sums: [u64; 4],
 }
 
 #[cfg(feature = "bench")]
@@ -308,6 +325,7 @@ impl Bench {
             max_gpu: 0,
             faces_sum: 0,
             tris_sum: 0,
+            seg_sums: [0; 4],
         }
     }
 
@@ -315,6 +333,7 @@ impl Bench {
     fn record(
         &mut self,
         t0: u64,
+        segments: &[(&str, u64); 4],
         before_sync: u64,
         after_sync: u64,
         after_present: u64,
@@ -322,6 +341,11 @@ impl Bench {
         tris: u32,
     ) {
         let now = bench_now();
+        let mut prev = t0;
+        for (i, (_, at)) in segments.iter().enumerate() {
+            self.seg_sums[i] += at.saturating_sub(prev);
+            prev = *at;
+        }
         let present = after_present.saturating_sub(before_sync);
         let work = now.saturating_sub(t0).saturating_sub(present);
         let gpu = after_sync.saturating_sub(before_sync);
@@ -338,7 +362,7 @@ impl Bench {
         let n = self.frames as u64;
         self.window += 1;
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{}}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -347,6 +371,10 @@ impl Bench {
             self.max_gpu,
             self.faces_sum / n,
             self.tris_sum / n,
+            self.seg_sums[0] / n,
+            self.seg_sums[1] / n,
+            self.seg_sums[2] / n,
+            self.seg_sums[3] / n,
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -371,6 +399,7 @@ impl Bench {
         self.max_gpu = 0;
         self.faces_sum = 0;
         self.tris_sum = 0;
+        self.seg_sums = [0; 4];
     }
 }
 

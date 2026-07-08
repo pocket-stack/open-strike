@@ -142,9 +142,13 @@ if (bench) {
       try {
         const w = JSON.parse(lines[seen]);
         const fps = Math.min(60, Math.round(1e6 / Math.max(w.avg_work_us, w.avg_gpu_us, 16667)));
+        const seg =
+          w.avg_sim_us !== undefined
+            ? `  [sim ${w.avg_sim_us} dispatch ${w.avg_dispatch_us} js ${w.avg_js_us} ui ${w.avg_ui_us}]`
+            : "";
         console.log(
           `[bench] work ${w.avg_work_us}us (max ${w.max_work_us})  gpu ${w.avg_gpu_us}us (max ${w.max_gpu_us})  ` +
-            `faces ${w.avg_faces}  tris ${w.avg_tris}  → ~${fps} fps`,
+            `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}  → ~${fps} fps`,
         );
       } catch {
         // partial line; retry next poll
