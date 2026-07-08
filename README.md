@@ -10,7 +10,12 @@
   <img src="docs/office.jpg" width="270" alt="OpenStrike on cs_office" />
 </p>
 
-<p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.</em></p>
+<p align="center">
+  <img src="docs/psp-dust2.png" width="480" alt="OpenStrike running on a Sony PSP — the sunlit de_dust2 courtyard at 480×272, with the JSX HUD and viewmodel" />
+</p>
+
+<p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
+The same game runs on desktop (wgpu) and on a real 2004 Sony PSP (sceGu) at a locked 60 fps — bottom shot is the PSP.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -21,13 +26,17 @@ instantiates is documented in the engine repo's
 [RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
 
 ```
-crates/openstrike        the FPS core (Rust)
+crates/openstrike-core   the simulation — no_std Rust shared VERBATIM by both
+                         targets (movement, bots, weapons, round state)
+crates/openstrike        the desktop build
   ├─ pocket3d            wgpu renderer, BSP worlds, collision, skeletal anim
   ├─ pocket-mod          the QuickJS guest (one realm, one turn per tick)
   ├─ pocket-ui-wgpu      the `ui` surface — PocketJS, composited as the HUD
   └─ strike surface      this game's vocabulary (src/guest.rs)
+crates/openstrike-psp    the PSP build: an EBOOT on pocket3d-gu (sceGu) and
+                         the PocketJS PSP host — same surfaces, same bundle
 
-game/                    the product bundle (JS/TSX)
+game/                    the product bundle (JS/TSX) — runs on BOTH targets
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
   ├─ rules.ts            the base game as the FIRST MOD: round flow, scoring,
   │                      weapon + bot tuning
@@ -116,7 +125,17 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 ## Real PSP hardware
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
-JSX HUD, rendered by the sceGu backend (`pocket3d-gu`) over a pre-cooked map:
+JSX HUD, rendered by the sceGu backend (`pocket3d-gu`) over a pre-cooked map.
+Not a stripped-down demo: the identical `dist/openstrike.js` bundle that
+drives the desktop build boots in QuickJS on the handheld.
+
+<p align="center">
+  <img src="docs/psp-fire.png" width="400" alt="Firing on PSP — additive muzzle flash, tracer, ammo draining on the HUD" />
+  <img src="docs/psp-spawn.png" width="400" alt="CT spawn on PSP — baked lighting under the arches, full HUD" />
+</p>
+
+<p align="center"><em>Captured from the shipping EBOOT in PPSSPP's software renderer at native 480×272 — the same
+deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
 git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
@@ -133,7 +152,7 @@ Measured on hardware (333 MHz, `--bench`, scripted dust2 tour): 6.8–8.4 ms
 CPU per frame against the 16.7 ms budget — a locked 60 fps, with the GE
 under 30 µs. Cooking bakes lightmaps into vertex colors, keeps WAD textures
 as swizzled CLUT8 with full mip chains, and ships PVS so the renderer draws
-only the visible leaves; the 2.7 MB `.p3d` is consumed zero-copy from the
+only the visible leaves; the 3.8 MB `.p3d` is consumed zero-copy from the
 EBOOT image.
 
 ## Modding, v0.1 shape
