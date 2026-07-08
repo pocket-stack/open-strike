@@ -13,13 +13,7 @@
 //! Boot skeleton follows the pocketjs-psp bin (2 MB VFPU worker thread,
 //! arena allocator installed by linking the host library, pak fed to the
 //! core before JS). The cooked map renders in place from `.rodata`.
-//!
-//! KNOWN ISSUE (hardware): arming the DevTools mailbox (pocketjs-dbg/enable
-//! on host0:) freezes the game a couple of seconds after boot — the same
-//! build runs indefinitely with the mailbox absent, and the mailbox works
-//! on the 2D pocketjs-psp host. Suspected usbhostfs contention between the
-//! shim's polling and this app's heavier host0: traffic; leave the mailbox
-//! disarmed on hardware until root-caused (PPSSPP is unaffected).
+
 
 extern crate alloc;
 
