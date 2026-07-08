@@ -556,7 +556,7 @@ fn model_script(mut game: OpenStrike, args: &Args) -> Result<()> {
     for (tag, t) in [("a", 0.25f32), ("b", 0.75f32)] {
         game.bots.clear();
         let mut bot = Bot::spawn(bot_pos, face_yaw);
-        bot.anim = AnimState {
+        bot.anim = openstrike_core::AnimPlayback {
             clip: 0,
             time: t,
             speed: 0.0,
@@ -595,9 +595,9 @@ fn combat_script(mut game: OpenStrike, args: &Args) -> Result<()> {
 
     // One bot in the open, 220 units ahead.
     let bot_pos = game.player.state.pos + game.player.forward_flat() * 220.0;
+    let face_yaw = game.player.yaw + std::f32::consts::PI;
     game.bots.clear();
-    game.bots
-        .push(Bot::spawn(bot_pos, game.player.yaw + std::f32::consts::PI));
+    game.bots.push(Bot::spawn(bot_pos, face_yaw));
     settle(&mut game, 8); // let the bot land
 
     let chest = game.bots[0].state.pos + Vec3::Y * 8.0;

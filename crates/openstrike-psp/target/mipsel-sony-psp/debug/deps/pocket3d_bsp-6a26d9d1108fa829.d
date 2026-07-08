@@ -1,0 +1,12 @@
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/pocket3d_bsp-6a26d9d1108fa829.d: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/collide.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/cooked.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/trace.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/types.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/vis.rs
+
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/libpocket3d_bsp-6a26d9d1108fa829.rlib: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/collide.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/cooked.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/trace.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/types.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/vis.rs
+
+/Users/evan/code/open-strike/crates/openstrike-psp/target/mipsel-sony-psp/debug/deps/libpocket3d_bsp-6a26d9d1108fa829.rmeta: /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/lib.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/collide.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/cooked.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/trace.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/types.rs /Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/vis.rs
+
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/lib.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/collide.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/cooked.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/trace.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/types.rs:
+/Users/evan/code/open-strike/vendor/pocketjs/pocket3d/crates/pocket3d-bsp/src/vis.rs:

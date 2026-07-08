@@ -1,0 +1,24 @@
+# openstrike-core — the OpenStrike simulation, platform-free.
+#
+# Everything deterministic lives here: player movement glue, hitscan
+# ballistics, bot brains, weapon state, round phase, the strike surface's
+# command/event/state types, and the shared xorshift RNG. No wgpu, no winit,
+# no QuickJS — the desktop bin and the PSP EBOOT both wrap this crate and
+# supply their own input, presentation, and guest hosting.
+
+[package]
+name = "openstrike-core"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[features]
+default = ["std"]
+std = ["pocket3d-bsp/std", "glam/std"]
+# no_std math backend (the PSP build).
+libm = ["pocket3d-bsp/libm", "glam/libm"]
+
+[dependencies]
+pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp", default-features = false }
+glam = { version = "0.33", default-features = false }
+libm = "0.2"

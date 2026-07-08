@@ -1,9 +1,9 @@
 [workspace]
 resolver = "2"
-members = ["crates/openstrike"]
+members = ["crates/openstrike", "crates/openstrike-core"]
 # The vendored engine keeps its own workspaces (Cargo would otherwise try to
 # adopt the path-dependency crates into this one and break their inheritance).
-exclude = ["vendor"]
+exclude = ["vendor", "crates/openstrike-psp"]
 
 [workspace.package]
 version = "0.1.0"

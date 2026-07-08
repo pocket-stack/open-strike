@@ -1,0 +1,3 @@
+cargo:rerun-if-changed=build.rs
+cargo:rerun-if-changed=libunwind.a
+cargo:rerun-if-env-changed=RUSTFLAGS
