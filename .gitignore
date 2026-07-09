@@ -16,3 +16,4 @@
 crates/openstrike-psp/target/
 # script/e2e outputs
 /out/
+/pocketjs-dbg/
