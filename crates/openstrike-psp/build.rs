@@ -1,10 +1,10 @@
-//! Embeds the product bundle (dist/openstrike.{js,pak}), the cooked map
-//! (OPENSTRIKE_PSP_MAP, a .p3d path), and the capture window/script envs.
-//! Empty fallbacks keep bare builds green.
+//! Embeds the product bundle (dist/openstrike.{js,pak}) and the capture /
+//! autostart envs. Maps are NOT embedded: the EBOOT loads cooked .p3d files
+//! from maps/ next to itself (see src/maps.rs).
 
 use std::env;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -23,20 +23,11 @@ fn main() {
     let pak = fs::read(&pak_src).unwrap_or_default();
     fs::write(out.join("app.pak"), pak).unwrap();
 
-    let map = env::var("OPENSTRIKE_PSP_MAP").unwrap_or_default();
-    println!("cargo:rerun-if-env-changed=OPENSTRIKE_PSP_MAP");
-    let dst = out.join("map.p3d");
-    if !map.is_empty() && Path::new(&map).exists() {
-        println!("cargo:rerun-if-changed={map}");
-        fs::copy(&map, &dst).expect("copying OPENSTRIKE_PSP_MAP");
-    } else {
-        fs::write(&dst, []).expect("writing empty map.p3d");
-    }
-
     for var in [
         "OPENSTRIKE_PSP_CAPTURE_INPUT",
         "OPENSTRIKE_PSP_CAP_START",
         "OPENSTRIKE_PSP_CAP_N",
+        "OPENSTRIKE_PSP_AUTOSTART",
     ] {
         println!("cargo:rerun-if-env-changed={var}");
         let v = env::var(var).unwrap_or_default();

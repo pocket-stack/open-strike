@@ -8,7 +8,7 @@
 
 export interface StrikeState {
   time: number;
-  phase: "starting" | "live" | "won" | "lost";
+  phase: "menu" | "starting" | "live" | "won" | "lost";
   hp: number;
   alive: boolean;
   ammo: number;
@@ -46,6 +46,10 @@ export interface BotsConfig {
 }
 
 interface NativeStrike {
+  /** Cooked maps available to loadMap (index-aligned), host-injected. */
+  maps?: string[];
+  loadMap?(index: number): void;
+  toMenu?(): void;
   setPhase(phase: string): void;
   resetRound(): void;
   addWin(): void;
@@ -110,6 +114,12 @@ export const strike = {
   },
 
   // ---- intent (queued host-side, applied after this guest turn) ----------
+  /** Map names the host can load (empty on hosts that boot pre-loaded). */
+  maps: (native.maps ?? []) as readonly string[],
+  /** Ask the host to load a cooked map and start a round (menu hosts). */
+  loadMap: (index: number) => native.loadMap?.(index),
+  /** Leave the round and return to the main menu (menu hosts). */
+  toMenu: () => native.toMenu?.(),
   setPhase: (phase: StrikeState["phase"]) => native.setPhase(phase),
   resetRound: () => native.resetRound(),
   addWin: () => native.addWin(),

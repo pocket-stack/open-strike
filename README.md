@@ -125,13 +125,15 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 ## Real PSP hardware
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
-JSX HUD, rendered by the sceGu backend (`pocket3d-gu`) over a pre-cooked map.
-Not a stripped-down demo: the identical `dist/openstrike.js` bundle that
-drives the desktop build boots in QuickJS on the handheld.
+JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
+demo: the identical `dist/openstrike.js` bundle that drives the desktop build
+boots in QuickJS on the handheld. It ships as a proper EBOOT — branded XMB
+icon and backdrop, a main menu that lists every cooked map, and SELECT to
+return there mid-round.
 
 <p align="center">
-  <img src="docs/psp-fire.png" width="400" alt="Firing on PSP — additive muzzle flash, tracer, ammo draining on the HUD" />
-  <img src="docs/psp-spawn.png" width="400" alt="CT spawn on PSP — baked lighting under the arches, full HUD" />
+  <img src="docs/psp-menu.png" width="400" alt="OpenStrike PSP main menu — a two-column map list (all eight CS classics) under the wordmark" />
+  <img src="docs/psp-fire.png" width="400" alt="Firing on PSP — muzzle flash and the compact corner HUD" />
 </p>
 
 <p align="center"><em>Captured from the shipping EBOOT in PPSSPP's software renderer at native 480×272 — the same
@@ -139,21 +141,28 @@ deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
 git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
-bun scripts/psp.ts                   # bundle → cook de_dust2 → cargo psp EBOOT
+bun scripts/psp.ts                   # bundle → cook every map → cargo psp EBOOT
+bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
 bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/fire)
 ```
 
-Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
-down reloads, d-pad up walks. The build needs the PSP toolchain from the
-PocketJS ecosystem (`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
+Install: copy `dist/PSP/` to a Memory Stick root (or the emulator's memstick
+dir) on a homebrew-enabled PSP; OpenStrike appears in the Game menu with its
+icon. The build needs the PSP toolchain from the PocketJS ecosystem
+(`pocket doctor`) plus the CS maps (`OPENSTRIKE_MAPS`).
 
-Measured on hardware (333 MHz, `--bench`, scripted dust2 tour): 6.8–8.4 ms
-CPU per frame against the 16.7 ms budget — a locked 60 fps, with the GE
-under 30 µs. Cooking bakes lightmaps into vertex colors, keeps WAD textures
-as swizzled CLUT8 with full mip chains, and ships PVS so the renderer draws
-only the visible leaves; the 3.8 MB `.p3d` is consumed zero-copy from the
-EBOOT image.
+Controls: analog stick moves, `△/✕/□/○` looks, `R` fires, `L` jumps, d-pad
+down reloads, d-pad up walks, **SELECT** opens the return-to-menu dialog. In
+the menu, d-pad selects a map and `○` deploys.
+
+Measured on hardware (333 MHz, `--bench`, scripted dust2 tour): a locked
+60 fps, GE under 30 µs — and combat is flat too (no per-shot hitch: the HUD
+updates through the framework's imperative hot path, avoiding a reactive
+flush per frame). Cooking bakes lightmaps into vertex colors, keeps WAD
+textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
+draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
+load on demand from `maps/` next to the EBOOT into one reused buffer.
 
 ## Modding, v0.1 shape
 
