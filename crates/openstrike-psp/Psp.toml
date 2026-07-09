@@ -1,0 +1,6 @@
+# cargo-psp EBOOT metadata (read from this crate dir at `cargo psp` time).
+# The XMB shows `title` under ICON0; PIC1 is the full-screen backdrop behind
+# the game's listing. Art lives in assets/ (built by scripts/gen-cover.ts).
+title = "OpenStrike"
+xmb_icon_png = "assets/ICON0.png"
+xmb_background_png = "assets/PIC1.png"

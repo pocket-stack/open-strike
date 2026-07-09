@@ -18,10 +18,10 @@
 // Class strings are ternaries of FULL literals (the Tailwind subset bakes
 // at build time); `S` picks the compact PSP set or the scaled desktop set.
 
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
-import { onFrame } from "@pocketjs/framework/lifecycle";
+import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { strike, type StrikeState } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
 
@@ -67,6 +67,10 @@ export default function Hud() {
   const [losses, setLosses] = createSignal(s0.losses);
   const [reserve, setReserve] = createSignal(s0.reserve);
   const [countdown, setCountdown] = createSignal(0);
+  // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
+  // structural but user-initiated — never on the combat hot path.
+  const [dialog, setDialog] = createSignal(false);
+  onButtonPress(0x0001, () => setDialog((d) => !d));
 
   // Hot refs: PER-FRAME values, written imperatively (rule 2).
   let hpText: Ref;
@@ -459,6 +463,66 @@ export default function Hud() {
           </View>
         </View>
       </View>
+
+      {/* Quit dialog (SELECT). CS-style: the world keeps running behind it. */}
+      <Show when={dialog()}>
+        <View
+          class="absolute inset-0 justify-center items-center"
+          style={{ bgColor: "#02040788", zIndex: 40 }}
+        >
+          <View
+            class="flex-col items-center gap-2 px-5 py-3 rounded-md"
+            style={{ bgColor: "#0a121aF0" }}
+          >
+            <Text
+              class={
+                S >= 2 ? "text-xl font-bold tracking-wide" : "text-sm font-bold tracking-wide"
+              }
+              style={{ textColor: INK }}
+            >
+              RETURN TO MAIN MENU?
+            </Text>
+            <View class="flex-row gap-2">
+              <View
+                focusable
+                onPress={() => setDialog(false)}
+                class="px-4 py-1 rounded-sm focus:bg-slate-700"
+                style={{ bgColor: "#111a24" }}
+              >
+                <Text
+                  class={
+                    S >= 2 ? "text-sm font-bold tracking-wide" : "text-xs font-bold tracking-wide"
+                  }
+                  style={{ textColor: DIM }}
+                >
+                  STAY
+                </Text>
+              </View>
+              <View
+                focusable
+                onPress={() => {
+                  setDialog(false);
+                  strike.toMenu();
+                }}
+                class="px-4 py-1 rounded-sm focus:bg-slate-700"
+                style={{ bgColor: "#111a24" }}
+              >
+                <Text
+                  class={
+                    S >= 2 ? "text-sm font-bold tracking-wide" : "text-xs font-bold tracking-wide"
+                  }
+                  style={{ textColor: RED }}
+                >
+                  QUIT
+                </Text>
+              </View>
+            </View>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              ○ CONFIRM · SELECT CLOSE
+            </Text>
+          </View>
+        </View>
+      </Show>
     </View>
   );
 }

@@ -261,6 +261,17 @@ fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<(
             };
         }
 
+        // Menu-host vocabulary (surface parity with the PSP EBOOT). The
+        // desktop build pre-loads its map from the CLI and never enters the
+        // menu, so these are honest no-ops and the catalogue is empty.
+        ns.set("maps", Vec::<String>::new())?;
+        op!("loadMap", move |_i: i32| {
+            log::warn!("strike.loadMap: desktop pre-loads its map (--map)");
+        });
+        op!("toMenu", move || {
+            log::warn!("strike.toMenu: no menu on the desktop host (exit and rerun)");
+        });
+
         let q = commands.clone();
         op!("setPhase", move |name: String| {
             if let Some(p) = parse_phase(&name) {

@@ -31,6 +31,45 @@ pub unsafe fn drain(mut apply: impl FnMut(Command)) {
     }
 }
 
+/// HOST-level intents (world lifecycle, not simulation): queued like
+/// Commands, drained by the frame loop after present.
+#[derive(Clone, Copy, Debug)]
+pub enum HostCmd {
+    LoadMap(usize),
+    ToMenu,
+}
+
+static mut HOST_CMDS: Vec<HostCmd> = Vec::new();
+
+pub unsafe fn drain_host(mut apply: impl FnMut(HostCmd)) {
+    for cmd in HOST_CMDS.drain(..) {
+        apply(cmd);
+    }
+}
+
+unsafe extern "C" fn js_load_map(
+    ctx: *mut JSContext,
+    _this: JSValue,
+    argc: i32,
+    argv: *mut JSValue,
+) -> JSValue {
+    let i = arg_i32(ctx, argc, argv, 0);
+    if i >= 0 {
+        HOST_CMDS.push(HostCmd::LoadMap(i as usize));
+    }
+    JS_UNDEFINED
+}
+
+unsafe extern "C" fn js_to_menu(
+    _ctx: *mut JSContext,
+    _this: JSValue,
+    _argc: i32,
+    _argv: *mut JSValue,
+) -> JSValue {
+    HOST_CMDS.push(HostCmd::ToMenu);
+    JS_UNDEFINED
+}
+
 fn phase_name(phase: Phase) -> &'static str {
     match phase {
         Phase::Starting => "starting",
@@ -196,7 +235,11 @@ unsafe extern "C" fn js_configure_bots(
 }
 
 /// Install `globalThis.strike` (intent ops; the SDK adds `__dispatch`).
-pub unsafe fn register(ctx: *mut JSContext, global: JSValue) {
+pub unsafe fn register(
+    ctx: *mut JSContext,
+    global: JSValue,
+    maps: &[alloc::string::String],
+) {
     let obj = JS_NewObject(ctx);
     add_fn(ctx, obj, b"setPhase\0", js_set_phase, 1);
     add_fn(ctx, obj, b"resetRound\0", js_reset_round, 0);
@@ -205,6 +248,15 @@ pub unsafe fn register(ctx: *mut JSContext, global: JSValue) {
     add_fn(ctx, obj, b"setBotCount\0", js_set_bot_count, 1);
     add_fn(ctx, obj, b"configureWeapon\0", js_configure_weapon, 1);
     add_fn(ctx, obj, b"configureBots\0", js_configure_bots, 1);
+    add_fn(ctx, obj, b"loadMap\0", js_load_map, 1);
+    add_fn(ctx, obj, b"toMenu\0", js_to_menu, 0);
+    // The cooked-map catalogue (menu hosts): strike.maps = ["de_dust2", …].
+    let arr = JS_NewArray(ctx);
+    for (i, name) in maps.iter().enumerate() {
+        let v = JS_NewStringLen(ctx, name.as_ptr(), name.len());
+        JS_SetPropertyUint32(ctx, arr, i as u32, v);
+    }
+    set_val(ctx, obj, b"maps\0", arr);
     JS_SetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _, obj);
 }
 
@@ -252,6 +304,46 @@ unsafe fn build_event(ctx: *mut JSContext, e: &GameEvent) -> JSValue {
         GameEvent::RoundReset => set_str(ctx, o, b"type\0", "roundReset"),
     }
     o
+}
+
+/// Menu-mode dispatch: no simulation exists, publish a minimal snapshot
+/// with phase "menu" (and an empty event batch).
+pub unsafe fn dispatch_menu(ctx: *mut JSContext, global: JSValue, time: f64) -> bool {
+    let strike = JS_GetPropertyStr(ctx, global, b"strike\0".as_ptr() as *const _);
+    if JS_IsUndefined(strike) {
+        JS_FreeValue(ctx, strike);
+        return true;
+    }
+    let dispatch = JS_GetPropertyStr(ctx, strike, b"__dispatch\0".as_ptr() as *const _);
+    let mut ok = true;
+    if !JS_IsUndefined(dispatch) {
+        let o = JS_NewObject(ctx);
+        set_val(ctx, o, b"time\0", JS_NewFloat64(ctx, time));
+        set_str(ctx, o, b"phase\0", "menu");
+        set_val(ctx, o, b"hp\0", JS_NewInt32(ctx, 100));
+        set_val(ctx, o, b"alive\0", JS_NewBool(ctx, true));
+        set_val(ctx, o, b"ammo\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"reserve\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"reloading\0", JS_NewBool(ctx, false));
+        set_val(ctx, o, b"reloadFrac\0", JS_NewFloat64(ctx, 0.0));
+        set_val(ctx, o, b"aliveBots\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"totalBots\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"wins\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"losses\0", JS_NewInt32(ctx, 0));
+        set_val(ctx, o, b"speed\0", JS_NewFloat64(ctx, 0.0));
+        let batch = JS_NewArray(ctx);
+        let mut args = [o, batch];
+        let r = JS_Call(ctx, dispatch, strike, 2, args.as_mut_ptr());
+        if JS_ValueGetTag(r) == JS_TAG_EXCEPTION {
+            ok = false;
+        }
+        JS_FreeValue(ctx, r);
+        JS_FreeValue(ctx, o);
+        JS_FreeValue(ctx, batch);
+    }
+    JS_FreeValue(ctx, dispatch);
+    JS_FreeValue(ctx, strike);
+    ok
 }
 
 /// One guest-ward dispatch: drain the sim's event batch and call

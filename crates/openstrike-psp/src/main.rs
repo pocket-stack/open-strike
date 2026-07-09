@@ -18,13 +18,13 @@
 extern crate alloc;
 
 mod input;
+mod maps;
 mod present;
 mod strike;
 
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_bsp::cooked;
 use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(feature = "capture")]
@@ -36,7 +36,6 @@ use psp::sys::CtrlButtons;
 #[cfg(any(feature = "capture", feature = "bench"))]
 use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
-use psp::Align16;
 
 use input::PadInput;
 use openstrike_core::StrikeSim;
@@ -45,9 +44,9 @@ psp::module!("openstrike", 1, 1);
 
 static APP_JS: &str = include_str!(concat!(env!("OUT_DIR"), "/game.js"));
 static APP_PAK: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/app.pak"));
-// 16-byte aligned: the GE reads vertices/indices/CLUTs/texels in place.
-static MAP_P3D: Align16<[u8; include_bytes!(concat!(env!("OUT_DIR"), "/map.p3d")).len()]> =
-    Align16(*include_bytes!(concat!(env!("OUT_DIR"), "/map.p3d")));
+// Deterministic runs (e2e, bench) skip the menu and boot straight into this
+// map; empty = boot into the menu (the shipped behavior).
+static AUTOSTART: &str = env!("OPENSTRIKE_PSP_AUTOSTART");
 
 #[cfg(feature = "capture")]
 static CAPTURE_INPUT: &str = env!("OPENSTRIKE_PSP_CAPTURE_INPUT");
@@ -57,6 +56,17 @@ static CAP_START: &str = env!("OPENSTRIKE_PSP_CAP_START");
 static CAP_N: &str = env!("OPENSTRIKE_PSP_CAP_N");
 
 const DT: f32 = 1.0 / 60.0;
+
+use alloc::vec::Vec;
+use openstrike_core::sim::Command;
+
+/// A loaded world: the renderer borrows the (never-freed) map buffer, so the
+/// borrow is 'static; the struct must be dropped before the buffer is
+/// overwritten by the next load (see the frame loop's host_cmd handling).
+struct Game {
+    sim: StrikeSim,
+    world: WorldRenderer<'static>,
+}
 
 // libquickjs-sys omits JS_NewArrayBuffer (local-extern pattern).
 extern "C" {
@@ -102,23 +112,22 @@ unsafe fn run() {
     let ui = ffi::init_ui();
     let (textures, sprites) = pak::feed(ui, APP_PAK);
 
-    // ---- Map + game ----
-    let map = match cooked::read(&MAP_P3D.0) {
-        Ok(m) => m,
-        Err(e) => host::halt(e),
-    };
-    pocket3d_gu::writeback(&MAP_P3D.0);
-    if map.ct_spawns.is_empty() {
-        host::halt("map has no CT spawns");
+    // ---- Map catalogue + reusable map buffer ----
+    let (map_names, max_map_bytes) = maps::scan();
+    if map_names.is_empty() {
+        host::halt("no cooked maps found (maps/*.p3d next to the EBOOT)");
     }
-    let spawn = map.ct_spawns[0];
-    let bot_spawns = if map.t_spawns.is_empty() {
-        map.ct_spawns.clone()
-    } else {
-        map.t_spawns.clone()
-    };
-    let mut sim = StrikeSim::new(spawn.pos, spawn.yaw, bot_spawns, 3);
-    let mut world = WorldRenderer::new(map);
+    // One 16-aligned buffer sized for the largest map, reused across loads.
+    // The backing memory is never freed (arena world), so treating it as
+    // 'static is honest; soundness rule: the current Game (which borrows
+    // it through CookedMap) is dropped before any reload overwrites it.
+    let words = (max_map_bytes as usize + 15) / 16 + 1;
+    let map_buf_ptr = alloc::boxed::Box::leak(
+        alloc::vec![0u128; words].into_boxed_slice(),
+    )
+    .as_mut_ptr() as *mut u8;
+    let map_buf_cap = words * 16;
+
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
     let rifle = present::build_rifle();
@@ -136,7 +145,7 @@ unsafe fn run() {
     let global = JS_GetGlobalObject(ctx);
     dbg::init();
     ffi::register(ctx, global, &textures, &sprites);
-    strike::register(ctx, global);
+    strike::register(ctx, global, &map_names);
     if !APP_PAK.is_empty() {
         let ab = JS_NewArrayBuffer(
             ctx,
@@ -167,6 +176,23 @@ unsafe fn run() {
         host::halt("globalThis.frame is undefined");
     }
 
+    // Commands issued while no world exists (rules.ts configures the weapon
+    // and bots at eval time) are game CONFIGURATION: keep them and replay
+    // into every freshly loaded simulation.
+    let mut boot_cfg: Vec<Command> = Vec::new();
+    let mut game: Option<Game> = None;
+    let mut menu_time: f64 = 0.0;
+    if !AUTOSTART.is_empty() {
+        let idx = map_names.iter().position(|n| n == AUTOSTART);
+        let Some(idx) = idx else {
+            host::halt("autostart map not in the catalogue");
+        };
+        match maps::load(&map_names[idx], map_buf_ptr, map_buf_cap, &boot_cfg) {
+            Ok(g) => game = Some(g),
+            Err(e) => host::halt(e),
+        }
+    }
+
     // ---- Frame loop (pipelined present, one tick per vblank) ----
     let mut frame_count: u32 = 0;
     #[cfg(feature = "bench")]
@@ -184,14 +210,22 @@ unsafe fn run() {
         let tick = pad.map(sample.0, sample.1, sample.2, DT);
         let mask = sample.0.bits() as i32;
 
-        // Simulation.
-        sim.apply_look(tick.look_dx, tick.look_dy);
-        sim.tick(&world.map().collision, DT, &tick.sim);
+        // Simulation (game stage only; the menu has no world).
+        if let Some(g) = &mut game {
+            g.sim.apply_look(tick.look_dx, tick.look_dy);
+            g.sim.tick(&g.world.map().collision, DT, &tick.sim);
+        } else {
+            menu_time += DT as f64;
+        }
         #[cfg(feature = "bench")]
         let bench_after_sim = bench_now();
 
         // Guest turn: facts out, HUD frame, microtasks, intent in.
-        if !strike::dispatch(ctx, global, &mut sim) {
+        let ok = match &mut game {
+            Some(g) => strike::dispatch(ctx, global, &mut g.sim),
+            None => strike::dispatch_menu(ctx, global, menu_time),
+        };
+        if !ok {
             log_exception(ctx);
         }
         #[cfg(feature = "bench")]
@@ -205,7 +239,12 @@ unsafe fn run() {
         #[cfg(feature = "bench")]
         let bench_after_js = bench_now();
         host::drain_jobs(rt);
-        strike::drain(|cmd| sim.apply(cmd, 0));
+        strike::drain(|cmd| match &mut game {
+            Some(g) => g.sim.apply(cmd, 0),
+            None => boot_cfg.push(cmd),
+        });
+        let mut host_cmd: Option<strike::HostCmd> = None;
+        strike::drain_host(|c| host_cmd = Some(c));
 
         // UI core frame.
         let ui = ffi::ui();
@@ -235,40 +274,72 @@ unsafe fn run() {
         pool.reset();
 
         sys::sceGuStart(GuContextType::Direct, host::list_ptr());
-        let cam = Camera3d {
-            pos: sim.player.eye_interpolated(1.0),
-            yaw: sim.player.yaw,
-            pitch: sim.player.pitch,
-            fov_y: 74f32.to_radians(),
-            ..Camera3d::default()
+        let cam = match &game {
+            Some(g) => Camera3d {
+                pos: g.sim.player.eye_interpolated(1.0),
+                yaw: g.sim.player.yaw,
+                pitch: g.sim.player.pitch,
+                fov_y: 74f32.to_radians(),
+                ..Camera3d::default()
+            },
+            None => Camera3d {
+                fov_y: 74f32.to_radians(),
+                ..Camera3d::default()
+            },
         };
         pocket3d_gu::begin_3d(&cam);
         sky::draw(&mut pool, &cam, &sky_params);
-        world.draw(&mut pool, &cam);
-        present::draw_bots(&mut pool, &bot_body, &sim.bots);
-        present::draw_effects(&mut pool, &sim, &cam);
-        present::draw_viewmodel(&mut pool, &rifle, &sim);
+        if let Some(g) = &mut game {
+            g.world.draw(&mut pool, &cam);
+            present::draw_bots(&mut pool, &bot_body, &g.sim.bots);
+            present::draw_effects(&mut pool, &g.sim, &cam);
+            present::draw_viewmodel(&mut pool, &rifle, &g.sim);
+        }
         pocket3d_gu::end_3d();
         // The JSX HUD, unchanged from every other PocketJS host.
         ge::render_over(ffi::ui(), core::slice::from_raw_parts(words_ptr, words_len));
         sys::sceGuFinish();
 
         #[cfg(feature = "bench")]
-        bench.record(
-            frame_count,
-            bench_t0,
-            &[
-                ("sim", bench_after_sim),
-                ("dispatch", bench_after_dispatch),
-                ("js", bench_after_js),
-                ("ui", bench_after_ui),
-            ],
-            bench_before_sync,
-            bench_after_sync,
-            bench_after_present,
-            world.last_faces,
-            world.last_tris,
-        );
+        {
+            let (faces, tris) = match &game {
+                Some(g) => (g.world.last_faces, g.world.last_tris),
+                None => (0, 0),
+            };
+            bench.record(
+                frame_count,
+                bench_t0,
+                &[
+                    ("sim", bench_after_sim),
+                    ("dispatch", bench_after_dispatch),
+                    ("js", bench_after_js),
+                    ("ui", bench_after_ui),
+                ],
+                bench_before_sync,
+                bench_after_sync,
+                bench_after_present,
+                faces,
+                tris,
+            );
+        }
+
+        // World lifecycle intents, applied OUTSIDE all world borrows (the
+        // presented frame already showed the menu's LOADING state).
+        match host_cmd {
+            Some(strike::HostCmd::LoadMap(i)) if game.is_none() => {
+                if let Some(name) = map_names.get(i) {
+                    match maps::load(name, map_buf_ptr, map_buf_cap, &boot_cfg) {
+                        Ok(g) => game = Some(g),
+                        Err(e) => psp::dprintln!("[openstrike] loadMap failed: {}", e),
+                    }
+                }
+            }
+            Some(strike::HostCmd::ToMenu) => {
+                game = None; // drops every borrow of the map buffer
+                menu_time = 0.0;
+            }
+            _ => {}
+        }
 
         frame_count = frame_count.wrapping_add(1);
     }

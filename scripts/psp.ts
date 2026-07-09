@@ -11,7 +11,7 @@
 // libquickjs-sys's own include resolution.
 
 import { $ } from "bun";
-import { existsSync, mkdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -29,9 +29,8 @@ if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
-const bsp = `${mapsRoot}/maps/${mapName}.bsp`;
-if (!existsSync(bsp)) {
-  console.error(`no such map: ${bsp} (set OPENSTRIKE_MAPS)`);
+if (!existsSync(`${mapsRoot}/maps`)) {
+  console.error(`no maps dir at ${mapsRoot}/maps (set OPENSTRIKE_MAPS)`);
   process.exit(1);
 }
 
@@ -39,15 +38,23 @@ if (!existsSync(bsp)) {
 console.log("openstrike-psp: building the JS bundle");
 await $`bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist`.cwd(repo);
 
-// ---- 2. cook the map -----------------------------------------------------
-mkdirSync(`${repo}dist`, { recursive: true });
-const p3d = `${repo}dist/${mapName}.p3d`;
-console.log(`openstrike-psp: cooking ${mapName}`);
+// ---- 2. cook EVERY map (the menu lists them all) -------------------------
 // 32-unit light grid: samples every other GoldSrc luxel — crisp baked
 // shadows for ~0.9 MB more map (GE headroom is huge, this is cheap).
-await $`cargo run --release -q -p pocket3d-cook -- ${bsp} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
-  `${repo}vendor/pocketjs/pocket3d`,
-);
+mkdirSync(`${repo}dist/maps`, { recursive: true });
+const bsps = readdirSync(`${mapsRoot}/maps`)
+  .filter((f) => f.endsWith(".bsp"))
+  .sort();
+for (const f of bsps) {
+  const stem = f.slice(0, -4);
+  const src = `${mapsRoot}/maps/${f}`;
+  const p3d = `${repo}dist/maps/${stem}.p3d`;
+  if (existsSync(p3d) && statSync(p3d).mtimeMs > statSync(src).mtimeMs) continue;
+  console.log(`openstrike-psp: cooking ${stem}`);
+  await $`cargo run --release -q -p pocket3d-cook -- ${src} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
+    `${repo}vendor/pocketjs/pocket3d`,
+  );
+}
 
 // ---- 3. cargo psp ---------------------------------------------------------
 const sdkCandidates = [
@@ -85,7 +92,11 @@ const env = {
   RUST_PSP_TARGET: `${repo}vendor/pocketjs/native/targets/mipsel-sony-psp.json`,
   RUST_PSP_ABORT_ONLY: "1",
   CARGO_PROFILE_DEV_OPT_LEVEL: process.env.CARGO_PROFILE_DEV_OPT_LEVEL ?? "3",
-  OPENSTRIKE_PSP_MAP: p3d,
+  // e2e/bench builds skip the menu and boot straight into --map; interactive
+  // builds boot into the menu.
+  OPENSTRIKE_PSP_AUTOSTART:
+    process.env.OPENSTRIKE_PSP_AUTOSTART ??
+    (features.length > 0 ? mapName : ""),
   // pocketjs-psp's build.rs runs as a dependency; keep its envs explicit so
   // stale values never linger in the cargo fingerprint.
   POCKETJS_APP: "", // lib target embeds nothing; openstrike-psp embeds its own bundle
@@ -108,6 +119,10 @@ await $`${rustup} run ${TOOLCHAIN} cargo psp ${cargoArgs}`.cwd(pspDir).env(env);
 
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
+mkdirSync(`${ebootDir}/maps`, { recursive: true });
+for (const f of readdirSync(`${repo}dist/maps`).filter((f) => f.endsWith(".p3d"))) {
+  cpSync(`${repo}dist/maps/${f}`, `${ebootDir}/maps/${f}`);
+}
 const named = `${ebootDir}/openstrike-psp.EBOOT.PBP`;
 if (existsSync(named)) {
   await Bun.write(`${ebootDir}/EBOOT.PBP`, await Bun.file(named).arrayBuffer());
@@ -117,3 +132,18 @@ if (!existsSync(`${ebootDir}/EBOOT.PBP`)) {
   process.exit(1);
 }
 console.log(`output: ${ebootDir}/EBOOT.PBP`);
+
+// ---- 4. Memory-Stick package (--package) --------------------------------
+// Assemble the drop-on-a-PSP layout: PSP/GAME/OpenStrike/{EBOOT.PBP, maps/}.
+// The EBOOT already carries ICON0/PIC1 (Psp.toml), so a homebrew-enabled XMB
+// shows the branded entry; maps/ sits beside it for the runtime loader.
+if (argv.includes("--package")) {
+  const pkg = `${repo}dist/PSP/GAME/OpenStrike`;
+  rmSync(`${repo}dist/PSP`, { recursive: true, force: true });
+  mkdirSync(`${pkg}/maps`, { recursive: true });
+  cpSync(`${ebootDir}/EBOOT.PBP`, `${pkg}/EBOOT.PBP`);
+  for (const f of readdirSync(`${repo}dist/maps`).filter((f) => f.endsWith(".p3d"))) {
+    cpSync(`${repo}dist/maps/${f}`, `${pkg}/maps/${f}`);
+  }
+  console.log(`packaged: ${pkg}/  (copy dist/PSP/ to a Memory Stick root)`);
+}
