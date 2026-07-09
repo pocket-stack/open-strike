@@ -18,9 +18,10 @@
 // Class strings are ternaries of FULL literals (the Tailwind subset bakes
 // at build time); `S` picks the compact PSP set or the scaled desktop set.
 
-import { createSignal, Show } from "solid-js";
+import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
+import { pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { strike, type StrikeState } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
@@ -466,63 +467,66 @@ export default function Hud() {
 
       {/* Quit dialog (SELECT). CS-style: the world keeps running behind it. */}
       <Show when={dialog()}>
-        <View
-          class="absolute inset-0 justify-center items-center"
-          style={{ bgColor: "#02040788", zIndex: 40 }}
+        <QuitDialog
+          onStay={() => setDialog(false)}
+          onQuit={() => {
+            setDialog(false);
+            strike.toMenu();
+          }}
+        />
+      </Show>
+    </View>
+  );
+}
+
+/** SELECT dialog. On mount it traps focus (STAY lit by default — the safe
+ *  choice); ↔ moves between the two buttons, each with a clear selected
+ *  state (neutral for STAY, danger-red for QUIT), `○` confirms the lit one. */
+function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
+  let panel!: never;
+  onMount(() => {
+    const dispose = pushFocusScope(panel, { autoFocus: true, restoreFocus: true });
+    onCleanup(dispose);
+  });
+  // Whole class strings must be single literals (the subset bakes them as a
+  // unit — a `base + variant` concat would never resolve at runtime).
+  const label = S >= 2 ? "text-sm font-bold tracking-wide" : "text-xs font-bold tracking-wide";
+  return (
+    <View
+      class="absolute inset-0 justify-center items-center"
+      style={{ bgColor: "#02040788", zIndex: 40 }}
+    >
+      <View class="flex-col items-center gap-2 px-5 py-3 rounded-md" style={{ bgColor: "#0a121aF0" }}>
+        <Text
+          class={S >= 2 ? "text-xl font-bold tracking-wide" : "text-sm font-bold tracking-wide"}
+          style={{ textColor: INK }}
         >
+          RETURN TO MAIN MENU?
+        </Text>
+        <View ref={(el: never) => (panel = el)} class="flex-row gap-2">
           <View
-            class="flex-col items-center gap-2 px-5 py-3 rounded-md"
-            style={{ bgColor: "#0a121aF0" }}
+            focusable
+            onPress={props.onStay}
+            class="px-4 py-1 rounded-sm border-[#00000000] transition-colors duration-100 bg-[#111a24] focus:bg-slate-600 focus:border-slate-300"
           >
-            <Text
-              class={
-                S >= 2 ? "text-xl font-bold tracking-wide" : "text-sm font-bold tracking-wide"
-              }
-              style={{ textColor: INK }}
-            >
-              RETURN TO MAIN MENU?
+            <Text class={label} style={{ textColor: INK }}>
+              STAY
             </Text>
-            <View class="flex-row gap-2">
-              <View
-                focusable
-                onPress={() => setDialog(false)}
-                class="px-4 py-1 rounded-sm focus:bg-slate-700"
-                style={{ bgColor: "#111a24" }}
-              >
-                <Text
-                  class={
-                    S >= 2 ? "text-sm font-bold tracking-wide" : "text-xs font-bold tracking-wide"
-                  }
-                  style={{ textColor: DIM }}
-                >
-                  STAY
-                </Text>
-              </View>
-              <View
-                focusable
-                onPress={() => {
-                  setDialog(false);
-                  strike.toMenu();
-                }}
-                class="px-4 py-1 rounded-sm focus:bg-slate-700"
-                style={{ bgColor: "#111a24" }}
-              >
-                <Text
-                  class={
-                    S >= 2 ? "text-sm font-bold tracking-wide" : "text-xs font-bold tracking-wide"
-                  }
-                  style={{ textColor: RED }}
-                >
-                  QUIT
-                </Text>
-              </View>
-            </View>
-            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-              ○ CONFIRM · SELECT CLOSE
+          </View>
+          <View
+            focusable
+            onPress={props.onQuit}
+            class="px-4 py-1 rounded-sm border-[#00000000] transition-colors duration-100 bg-[#241014] focus:bg-red-800 focus:border-red-400"
+          >
+            <Text class={label} style={{ textColor: RED }}>
+              QUIT
             </Text>
           </View>
         </View>
-      </Show>
+        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+          ↔ SELECT · ○ CONFIRM · SELECT CLOSE
+        </Text>
+      </View>
     </View>
   );
 }
