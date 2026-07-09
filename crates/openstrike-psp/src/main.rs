@@ -255,6 +255,7 @@ unsafe fn run() {
 
         #[cfg(feature = "bench")]
         bench.record(
+            frame_count,
             bench_t0,
             &[
                 ("sim", bench_after_sim),
@@ -296,6 +297,9 @@ struct Bench {
     faces_sum: u64,
     tris_sum: u64,
     seg_sums: [u64; 4],
+    /// Breakdown of the frame that set max_work: 4 segments + the
+    /// uninstrumented rest (draw recording, input, GE list build).
+    max_segs: [u64; 5],
 }
 
 #[cfg(feature = "bench")]
@@ -327,12 +331,14 @@ impl Bench {
             faces_sum: 0,
             tris_sum: 0,
             seg_sums: [0; 4],
+            max_segs: [0; 5],
         }
     }
 
     #[allow(clippy::too_many_arguments)]
     fn record(
         &mut self,
+        abs_frame: u32,
         t0: u64,
         segments: &[(&str, u64); 4],
         before_sync: u64,
@@ -343,16 +349,46 @@ impl Bench {
     ) {
         let now = bench_now();
         let mut prev = t0;
+        let mut segs = [0u64; 5];
         for (i, (_, at)) in segments.iter().enumerate() {
-            self.seg_sums[i] += at.saturating_sub(prev);
+            segs[i] = at.saturating_sub(prev);
+            self.seg_sums[i] += segs[i];
             prev = *at;
         }
         let present = after_present.saturating_sub(before_sync);
         let work = now.saturating_sub(t0).saturating_sub(present);
         let gpu = after_sync.saturating_sub(before_sync);
+        segs[4] = work.saturating_sub(segs[0] + segs[1] + segs[2] + segs[3]);
         self.frames += 1;
         self.work_sum += work;
-        self.max_work = self.max_work.max(work);
+        if work > self.max_work {
+            self.max_work = work;
+            self.max_segs = segs;
+        }
+        // Spike forensics: any frame past ~1.5x budget logs itself with its
+        // absolute frame index so it can be correlated with the input script.
+        if work > 25_000 {
+            let line = alloc::format!(
+                "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",
+                abs_frame, work, segs[0], segs[1], segs[2], segs[3], segs[4],
+            );
+            for path in [
+                b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
+                b"ms0:/OpenStrike-bench.jsonl\0".as_ptr(),
+            ] {
+                unsafe {
+                    let fd = sys::sceIoOpen(
+                        path,
+                        IoOpenFlags::WR_ONLY | IoOpenFlags::CREAT | IoOpenFlags::APPEND,
+                        0o777,
+                    );
+                    if fd.0 >= 0 {
+                        sys::sceIoWrite(fd, line.as_ptr() as *const c_void, line.len());
+                        sys::sceIoClose(fd);
+                    }
+                }
+            }
+        }
         self.gpu_sum += gpu;
         self.max_gpu = self.max_gpu.max(gpu);
         self.faces_sum += faces as u64;
@@ -364,7 +400,7 @@ impl Bench {
         self.window += 1;
         let arena = unsafe { pocketjs_psp::arena::stats() };
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}]}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -380,6 +416,11 @@ impl Bench {
             arena.capacity_bytes,
             arena.bump_bytes,
             arena.tail_free_bytes,
+            self.max_segs[0],
+            self.max_segs[1],
+            self.max_segs[2],
+            self.max_segs[3],
+            self.max_segs[4],
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -405,6 +446,7 @@ impl Bench {
         self.faces_sum = 0;
         self.tris_sum = 0;
         self.seg_sums = [0; 4];
+        self.max_segs = [0; 5];
     }
 }
 
