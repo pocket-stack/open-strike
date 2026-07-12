@@ -7,7 +7,7 @@
 //
 // The current macOS Vita3K Vulkan backend does not expose a coherent guest
 // color buffer after presentation. PocketJS capture builds therefore raster
-// the same DrawList deterministically and expand it exactly 2x, while `.scene`
+// the same DrawList deterministically at Vita's native density, while `.scene`
 // sidecars prove that the native Pocket3D pass submitted visible world data.
 
 import { $ } from "bun";
@@ -247,7 +247,8 @@ async function launchAndWait(expectedFrames: number): Promise<string[]> {
   }
 }
 
-function assertFullscreen2x(raw: Buffer, label: string): void {
+/** Prove the HUD did not regress to rendering 480x272 and duplicating each pixel. */
+function assertNativeDetail(raw: Buffer, label: string): void {
   const width = 960;
   const height = 544;
   const expected = width * height * 4;
@@ -263,11 +264,12 @@ function assertFullscreen2x(raw: Buffer, label: string): void {
       for (let channel = 0; channel < 4; channel++) {
         const value = raw[a + channel];
         if (raw[b + channel] !== value || raw[c + channel] !== value || raw[d + channel] !== value) {
-          throw new Error(`${label}: pixel (${x},${y}) is not an exact fullscreen 2x2 block`);
+          return;
         }
       }
     }
   }
+  throw new Error(`${label}: framebuffer contains only duplicated 2x2 logical pixels`);
 }
 
 function assertLiveScene(scenePath: string, label: string): void {
@@ -319,7 +321,7 @@ for (const spec of selectedSpecs) {
     const label = `${spec.name}.${stem}`;
     try {
       const raw = readFileSync(rawPath);
-      assertFullscreen2x(raw, label);
+      assertNativeDetail(raw, label);
       assertLiveScene(`${capDir}/${stem}.scene`, label);
 
       const png = `${outDir}/${label}.png`;
@@ -338,7 +340,7 @@ for (const spec of selectedSpecs) {
       } else if (!existsSync(golden)) {
         throw new Error(`golden missing (${golden}); run UPDATE=1 intentionally`);
       } else if (readFileSync(png).equals(readFileSync(golden))) {
-        console.log(`ok ${label} (byte-exact, 960x544 exact-2x)`);
+        console.log(`ok ${label} (byte-exact, 960x544 native density)`);
       } else {
         throw new Error(`differs from golden (actual: ${png})`);
       }

@@ -186,9 +186,11 @@ load on demand from `maps/` next to the EBOOT into one reused buffer.
 
 The Vita target runs the same simulation, JavaScript rules and Solid JSX HUD
 as desktop and PSP. Pocket3D renders at Vita's native 960×544, while the
-480×272 PocketJS UI is expanded exactly 2x to fill the screen. There is no
-letterboxing or crop. Touch is not implemented yet; both sticks, shoulders,
-d-pad, face buttons and SELECT cover gameplay and menus.
+PocketJS UI keeps its 480×272 logical layout and rasterizes at Vita's native
+2× density. Text, curves and rounded corners therefore use the full 960×544
+pixel grid instead of duplicating PSP pixels. There is no letterboxing or
+crop. Touch is not implemented yet; both sticks, shoulders, d-pad, face
+buttons and SELECT cover gameplay and menus.
 
 ```sh
 export VITASDK="$HOME/vitasdk"

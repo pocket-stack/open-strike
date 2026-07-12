@@ -5,9 +5,10 @@ the shared Rust simulation, cooked Pocket3D worlds, the normal PocketJS
 QuickJS guest, and the unchanged Solid JSX rules/HUD bundle.
 
 The Vita host renders Pocket3D first and the PocketJS HUD over the same
-vita2d scene. PocketJS keeps its 480x272 logical viewport and expands every
-coordinate exactly 2x, filling Vita's native 960x544 framebuffer without
-letterboxing or cropping. Touch is intentionally not implemented yet.
+vita2d scene. PocketJS keeps its 480x272 logical viewport, maps that layout to
+the native 960x544 framebuffer, and rasterizes text, curves and rounded corners
+at 2x density instead of duplicating PSP pixels. The result fills the screen
+without letterboxing or cropping. Touch is intentionally not implemented yet.
 
 ## Toolchain and build
 
@@ -54,10 +55,11 @@ VITA_E2E_SPEC=spawn bun run test:e2e:vita
 The driver builds capture VPKs, installs each into an isolated VitaFS, boots
 the real QuickJS/input/simulation/render loop, waits for its `done` marker,
 and terminates only the spawned emulator. Every selected capture must be a
-960x544 RGBA frame whose pixels form exact 2x2 logical blocks and must match
-`test/goldens-vita` byte-for-byte. A scene sidecar additionally requires
-positive visible-face, world-triangle, submitted-triangle, and draw-call
-counts from the native `pocket3d-vita` pass.
+960x544 RGBA frame with native-density detail and must match
+`test/goldens-vita` byte-for-byte. The native-detail assertion rejects a
+regression to a 480x272 frame duplicated into 2x2 pixel blocks. A scene sidecar
+additionally requires positive visible-face, world-triangle,
+submitted-triangle, and draw-call counts from the native `pocket3d-vita` pass.
 
 Current Vita3K macOS Vulkan builds do not expose a coherent presented color
 buffer back to guest memory. The pixel oracle therefore uses PocketJS's
