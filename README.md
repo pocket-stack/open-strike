@@ -60,8 +60,23 @@ game grants itself no privileges a mod wouldn't have.
 git clone --recursive https://github.com/pocket-stack/open-strike
 cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
-bun run build:ui   # game/openstrike.tsx -> dist/openstrike.{js,pak}
+bun run check:platforms
+bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun scripts/build-ui.ts --target vita
 ```
+
+[`pocket.json`](pocket.json) is the portable Pocket application contract. It
+requires the draw list, baked glyphs, buttons and one analog stick at a
+480x272 logical `integer-fit` viewport; it does not claim touch, dynamic text,
+or a stock Pocket3D capability. Pocket3D remains an extension implemented by
+OpenStrike's custom native hosts. Every target build validates that manifest,
+runs target-specific TypeScript checks, writes `.pocket/<target>/plan.json`,
+and delegates compilation to `pocket compile` using the public
+`@pocketjs/framework/manifest` contract. Target artifacts are isolated under
+`dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
+another. The same target, host ABI, contract hash and logical/physical
+viewports are then passed into cargo, so a bundle cannot silently boot under
+a differently built Pocket host.
 
 ### Map data
 
@@ -128,10 +143,10 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
-demo: the identical `dist/openstrike.js` bundle that drives the desktop build
-boots in QuickJS on the handheld. It ships as a proper EBOOT — branded XMB
-icon and backdrop, a main menu that lists every cooked map, and SELECT to
-return there mid-round.
+demo: the identical `dist/pocket/psp/openstrike.js` bundle that drives the
+desktop build boots in QuickJS on the handheld. It ships as a proper EBOOT —
+branded XMB icon and backdrop, a main menu that lists every cooked map, and
+SELECT to return there mid-round.
 
 <p align="center">
   <img src="docs/psp-menu.png" width="400" alt="OpenStrike PSP main menu — a two-column map list (all eight CS classics) under the wordmark" />
@@ -143,7 +158,7 @@ deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
 git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
-bun scripts/psp.ts                   # bundle → cook every map → cargo psp EBOOT
+bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
 bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/fire)
@@ -178,7 +193,7 @@ d-pad, face buttons and SELECT cover gameplay and menus.
 export VITASDK="$HOME/vitasdk"
 export PATH="$VITASDK/bin:$HOME/.cargo/bin:$PATH"
 
-OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release # resolved Vita plan → VPK
 bun scripts/e2e-vita.ts
 ```
 

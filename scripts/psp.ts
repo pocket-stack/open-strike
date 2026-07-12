@@ -12,6 +12,7 @@
 
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -35,8 +36,8 @@ if (!existsSync(`${mapsRoot}/maps`)) {
 }
 
 // ---- 1. product bundle (rules + JSX HUD) --------------------------------
-console.log("openstrike-psp: building the JS bundle");
-await $`bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist`.cwd(repo);
+console.log("openstrike-psp: resolving and building the Pocket app contract");
+const pocketPlan = await compilePocketTarget("psp");
 
 // ---- 2. cook EVERY map (the menu lists them all) -------------------------
 // 32-unit light grid: samples every other GoldSrc luxel — crisp baked
@@ -74,6 +75,7 @@ const rustup = Bun.which("rustup") ?? `${home}/.cargo/bin/rustup`;
 
 const env = {
   ...process.env,
+  ...nativePocketContract(pocketPlan),
   PATH: `${llvm}:${home}/.cargo/bin:${process.env.PATH}`,
   // newlib (QuickJS needs -lc) and rust-psp both define memcpy/_exit/truncf
   // with identical semantics; whichever the linker sees first wins.
@@ -97,9 +99,8 @@ const env = {
   OPENSTRIKE_PSP_AUTOSTART:
     process.env.OPENSTRIKE_PSP_AUTOSTART ??
     (features.length > 0 ? mapName : ""),
-  // pocketjs-psp's build.rs runs as a dependency; keep its envs explicit so
-  // stale values never linger in the cargo fingerprint.
-  POCKETJS_APP: "", // lib target embeds nothing; openstrike-psp embeds its own bundle
+  // pocketjs-psp's build.rs runs as a dependency; nativePocketContract keeps
+  // the JS bundle and custom host on the same resolved target contract.
   POCKETJS_CAPTURE_INPUT: "",
   POCKETJS_TRACE: process.env.POCKETJS_TRACE ?? "",
   POCKETJS_CAP_START: "",

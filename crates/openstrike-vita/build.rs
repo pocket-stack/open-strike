@@ -8,11 +8,16 @@ use std::path::PathBuf;
 fn main() {
     let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let dist = manifest.join("../../dist");
+    let dist = env::var_os("POCKETJS_OUTPUT_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| manifest.join("../../dist/pocket/vita"));
     let is_vita = env::var("TARGET").is_ok_and(|target| target.contains("vita"));
+    let app = env::var("POCKETJS_APP_OUTPUT").unwrap_or_else(|_| "openstrike".into());
+    println!("cargo:rerun-if-env-changed=POCKETJS_OUTPUT_DIR");
+    println!("cargo:rerun-if-env-changed=POCKETJS_APP_OUTPUT");
 
-    let js_src = dist.join("openstrike.js");
-    let pak_src = dist.join("openstrike.pak");
+    let js_src = dist.join(format!("{app}.js"));
+    let pak_src = dist.join(format!("{app}.pak"));
     println!("cargo:rerun-if-changed={}", js_src.display());
     println!("cargo:rerun-if-changed={}", pak_src.display());
 

@@ -11,6 +11,7 @@
 
 # js deps (bun run setup re-creates the solid-js link)
 /node_modules
+/.pocket/
 
 # PSP EBOOT crate (excluded from the workspace, so /target doesn't cover it)
 crates/openstrike-psp/target/

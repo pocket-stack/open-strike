@@ -3,8 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "cd vendor/pocketjs && bun install && cd ../.. && mkdir -p node_modules && ln -sfn ../vendor/pocketjs/node_modules/solid-js node_modules/solid-js",
-    "build:ui": "bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist",
+    "setup": "cd vendor/pocketjs && bun install && cd ../.. && mkdir -p node_modules/@pocketjs && ln -sfn ../../vendor/pocketjs node_modules/@pocketjs/framework && ln -sfn ../vendor/pocketjs/node_modules/solid-js node_modules/solid-js && ln -sfn ../vendor/pocketjs/node_modules/bun-types node_modules/bun-types",
+    "typecheck": "bun vendor/pocketjs/node_modules/typescript/bin/tsc --noEmit",
+    "check:platforms": "bun run typecheck && bun vendor/pocketjs/scripts/pocket.ts check --target psp && bun vendor/pocketjs/scripts/pocket.ts check --target vita",
+    "build:ui": "bun scripts/build-ui.ts --target psp",
     "build:vita": "bun scripts/vita.ts",
     "test:e2e:vita": "bun scripts/e2e-vita.ts"
   }

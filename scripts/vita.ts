@@ -16,6 +16,7 @@ import {
   rmSync,
   statSync,
 } from "node:fs";
+import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -49,9 +50,10 @@ if (!Bun.which("cargo-vita")) {
   process.exit(1);
 }
 
-// 1. The exact same rules + JSX bundle used by desktop and PSP.
-console.log("openstrike-vita: building the JS bundle");
-await $`bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist`.cwd(repo);
+// 1. Validate the app contract for Vita, then compile the JS/pak from the
+// immutable resolved plan. The same source manifest is also valid on PSP.
+console.log("openstrike-vita: resolving and building the Pocket app contract");
+const pocketPlan = await compilePocketTarget("vita");
 
 // 2. Cook every map so the on-device menu owns the complete catalogue.
 mkdirSync(`${repo}dist/maps`, { recursive: true });
@@ -97,6 +99,7 @@ if (release) cargoArgs.push("--release");
 if (features.length) cargoArgs.push(`--features=${features.join(",")}`);
 const env = {
   ...process.env,
+  ...nativePocketContract(pocketPlan),
   VITASDK: vitaSdk,
   // Homebrew's cargo/rustc may precede rustup on macOS. cargo-vita needs the
   // nightly rustup proxy for every recursive cargo/rustc invocation.

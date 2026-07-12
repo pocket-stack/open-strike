@@ -7,8 +7,8 @@
 # pocket3d-gu (the sceGu world renderer over a cooked .p3d) + the pocketjs-psp
 # host library (arena allocator, QuickJS embedding, `ui` surface, 2D DrawList
 # GE backend, DevTools mailbox) + this crate's `strike` surface and frame
-# loop. The same dist/openstrike.{js,pak} bundle as desktop is embedded — the
-# rules mod and the JSX HUD run unmodified on the handheld.
+# loop. The same dist/pocket/psp/openstrike.{js,pak} bundle as desktop is
+# embedded — the rules mod and JSX HUD run unmodified on the handheld.
 #
 # All vendor paths resolve inside vendor/: rust-psp + quickjs-rs are
 # submodules there, and vendor/pocketjs's own relative deps land on them.

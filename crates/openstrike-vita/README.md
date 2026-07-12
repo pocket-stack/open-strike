@@ -22,9 +22,11 @@ OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release
 # dist/vita/OpenStrike.vpk
 ```
 
-`scripts/vita.ts` builds the product JS/pak, cooks every supplied BSP, stages
-the `.p3d` catalogue into the VPK, and invokes the pinned Rust toolchain. Map
-and WAD data is not committed or redistributed.
+`scripts/vita.ts` validates `pocket.json` against the Vita capability profile,
+compiles the product JS/pak from its resolved plan, binds that plan's target,
+host ABI, contract hash and viewports into the Pocket host, cooks every
+supplied BSP, stages the `.p3d` catalogue into the VPK, and invokes the pinned
+Rust toolchain. Map and WAD data is not committed or redistributed.
 
 ## Controls
 
