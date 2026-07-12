@@ -128,6 +128,32 @@ mod tests {
     }
 
     #[test]
+    fn right_stick_deadzone_and_rates_are_explicit() {
+        let mut pad = PadInput::new();
+        let inside = pad.map(
+            PadSample {
+                rx: 145,
+                ry: 111,
+                ..PadSample::default()
+            },
+            1.0,
+        );
+        assert_eq!(inside.look_dx, 0.0);
+        assert_eq!(inside.look_dy, 0.0);
+
+        let full = pad.map(
+            PadSample {
+                rx: 0,
+                ry: 0,
+                ..PadSample::default()
+            },
+            1.0,
+        );
+        assert!((full.look_dx * MOUSE_SENS + LOOK_YAW_RATE).abs() < 0.000_01);
+        assert!((full.look_dy * MOUSE_SENS + LOOK_PITCH_RATE).abs() < 0.000_01);
+    }
+
+    #[test]
     fn reload_is_an_edge_while_fire_and_jump_are_levels() {
         let mut pad = PadInput::new();
         let sample = PadSample {

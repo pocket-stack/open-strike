@@ -93,12 +93,16 @@ mod vita {
         world_faces: u32,
         world_tris: u32,
         frame_pool: &FramePool,
+        camera: &Camera3d,
     ) -> Result<(), String> {
         let image = format!("{CAPTURE_ROOT}/f{index:04}.rgba");
         unsafe { runtime.capture_golden(&image) }.map_err(|error| error.to_string())?;
         let scene = format!(
-            "world_faces={world_faces}\nworld_tris={world_tris}\nsubmitted_tris={}\ndraw_calls={}\n",
-            frame_pool.last.triangles, frame_pool.last.draw_calls,
+            "world_faces={world_faces}\nworld_tris={world_tris}\nsubmitted_tris={}\ndraw_calls={}\ncamera_yaw={}\ncamera_pitch={}\n",
+            frame_pool.last.triangles,
+            frame_pool.last.draw_calls,
+            camera.yaw,
+            camera.pitch,
         );
         std::fs::write(format!("{CAPTURE_ROOT}/f{index:04}.scene"), scene)
             .map_err(|error| error.to_string())
@@ -231,7 +235,7 @@ mod vita {
                     .as_ref()
                     .map(|current| (current.world.last_faces, current.world.last_tris))
                     .unwrap_or((0, 0));
-                dump_capture(&mut runtime, index, faces, triangles, &frame_pool)
+                dump_capture(&mut runtime, index, faces, triangles, &frame_pool, &camera)
                     .unwrap_or_else(|error| fail(&error));
                 if index + 1 == cap_n {
                     let _ = std::fs::write(format!("{CAPTURE_ROOT}/done"), b"ok\n");

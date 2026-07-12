@@ -59,6 +59,13 @@ interface Spec {
   capStart: number;
   capN: number;
   shots: number[];
+  lookProbe?: {
+    from: number;
+    to: number;
+    yaw: "decrease" | "increase";
+    minYawDelta: number;
+    maxPitchDrift: number;
+  };
 }
 
 const R = 0x0200;
@@ -70,6 +77,16 @@ const SPECS: Spec[] = [
     capStart: 150,
     capN: 44,
     shots: [0, 40],
+    // The right stick is held right from global frame 150 through 189. Prove
+    // that the native pad path reaches the simulation camera, independently
+    // of the image golden (which could otherwise change for another reason).
+    lookProbe: {
+      from: 0,
+      to: 40,
+      yaw: "decrease",
+      minYawDelta: 0.75,
+      maxPitchDrift: 0.001,
+    },
   },
   { name: "fire", input: `0:0,90:${R}`, capStart: 92, capN: 12, shots: [1, 8] },
 ];
@@ -272,7 +289,12 @@ function assertNativeDetail(raw: Buffer, label: string): void {
   throw new Error(`${label}: framebuffer contains only duplicated 2x2 logical pixels`);
 }
 
-function assertLiveScene(scenePath: string, label: string): void {
+interface SceneTelemetry {
+  cameraYaw: number;
+  cameraPitch: number;
+}
+
+function assertLiveScene(scenePath: string, label: string): SceneTelemetry {
   if (!existsSync(scenePath)) throw new Error(`${label}: scene sidecar missing`);
   const values = Object.fromEntries(
     readFileSync(scenePath, "utf8")
@@ -286,6 +308,41 @@ function assertLiveScene(scenePath: string, label: string): void {
       throw new Error(`${label}: ${field} must be positive, got ${values[field] ?? "missing"}`);
     }
   }
+  const cameraYaw = Number(values.camera_yaw);
+  const cameraPitch = Number(values.camera_pitch);
+  if (!Number.isFinite(cameraYaw) || !Number.isFinite(cameraPitch)) {
+    throw new Error(`${label}: finite camera_yaw/camera_pitch telemetry is required`);
+  }
+  return { cameraYaw, cameraPitch };
+}
+
+function assertLookProbe(
+  spec: Spec,
+  telemetry: ReadonlyMap<number, SceneTelemetry>,
+): void {
+  const probe = spec.lookProbe;
+  if (!probe) return;
+  const from = telemetry.get(probe.from);
+  const to = telemetry.get(probe.to);
+  if (!from || !to) {
+    throw new Error(`${spec.name}: missing look telemetry at f${probe.from}/f${probe.to}`);
+  }
+  const yawDelta = to.cameraYaw - from.cameraYaw;
+  const yawMoved = probe.yaw === "decrease" ? -yawDelta : yawDelta;
+  if (yawMoved < probe.minYawDelta) {
+    throw new Error(
+      `${spec.name}: right-stick yaw moved ${yawDelta.toFixed(4)} rad; expected ${probe.yaw} by at least ${probe.minYawDelta}`,
+    );
+  }
+  const pitchDrift = Math.abs(to.cameraPitch - from.cameraPitch);
+  if (pitchDrift > probe.maxPitchDrift) {
+    throw new Error(
+      `${spec.name}: centered right-stick Y drifted pitch by ${pitchDrift.toFixed(6)} rad`,
+    );
+  }
+  console.log(
+    `look: yaw ${yawDelta.toFixed(4)} rad, pitch drift ${pitchDrift.toFixed(6)} rad (native right stick)`,
+  );
 }
 
 let failures = 0;
@@ -315,6 +372,7 @@ for (const spec of selectedSpecs) {
     continue;
   }
 
+  const telemetry = new Map<number, SceneTelemetry>();
   for (const shot of spec.shots) {
     const stem = `f${String(shot).padStart(4, "0")}`;
     const rawPath = `${capDir}/${stem}.rgba`;
@@ -322,7 +380,7 @@ for (const spec of selectedSpecs) {
     try {
       const raw = readFileSync(rawPath);
       assertNativeDetail(raw, label);
-      assertLiveScene(`${capDir}/${stem}.scene`, label);
+      telemetry.set(shot, assertLiveScene(`${capDir}/${stem}.scene`, label));
 
       const png = `${outDir}/${label}.png`;
       await $`magick -size 960x544 -depth 8 RGBA:${rawPath} -alpha off -define png:exclude-chunks=date,time PNG24:${png}`.quiet();
@@ -348,6 +406,12 @@ for (const spec of selectedSpecs) {
       console.error(`FAIL ${label}: ${error}`);
       failures++;
     }
+  }
+  try {
+    assertLookProbe(spec, telemetry);
+  } catch (error) {
+    console.error(`FAIL ${spec.name} look probe: ${error}`);
+    failures++;
   }
 }
 
