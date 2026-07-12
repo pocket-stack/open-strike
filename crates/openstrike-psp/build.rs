@@ -12,7 +12,8 @@ fn main() {
     let dist = env::var_os("POCKETJS_OUTPUT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| manifest.join("../../dist/pocket/psp"));
-    let app = env::var("POCKETJS_APP_OUTPUT").unwrap_or_else(|_| "openstrike".into());
+    let app = env::var("POCKETJS_APP_OUTPUT")
+        .expect("POCKETJS_APP_OUTPUT must come from PocketJS HostBuildInputs");
     println!("cargo:rerun-if-env-changed=POCKETJS_OUTPUT_DIR");
     println!("cargo:rerun-if-env-changed=POCKETJS_APP_OUTPUT");
 

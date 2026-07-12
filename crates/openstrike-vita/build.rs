@@ -12,7 +12,15 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| manifest.join("../../dist/pocket/vita"));
     let is_vita = env::var("TARGET").is_ok_and(|target| target.contains("vita"));
-    let app = env::var("POCKETJS_APP_OUTPUT").unwrap_or_else(|_| "openstrike".into());
+    let app = match env::var("POCKETJS_APP_OUTPUT") {
+        Ok(app) if !app.is_empty() => app,
+        _ if is_vita => {
+            panic!("POCKETJS_APP_OUTPUT must come from PocketJS HostBuildInputs")
+        }
+        // Host-side unit tests do not embed or execute the target app. Keep
+        // their generated resources empty without inventing an app default.
+        _ => String::new(),
+    };
     println!("cargo:rerun-if-env-changed=POCKETJS_OUTPUT_DIR");
     println!("cargo:rerun-if-env-changed=POCKETJS_APP_OUTPUT");
 

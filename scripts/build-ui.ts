@@ -9,6 +9,4 @@ if (!target || argv.length !== 2 || targetIndex !== 0) {
 }
 
 const plan = await compilePocketTarget(target);
-console.log(
-  `output: ${pocketOutputDirectory(target)}/${plan.app.output}.{js,pak} (${plan.contractHash})`,
-);
+console.log(`output: ${pocketOutputDirectory(target)}/${plan.appOutput}.{js,pak}`);

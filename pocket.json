@@ -6,28 +6,12 @@
   "title": "OpenStrike",
   "version": "0.1.0",
   "engine": {
-    "abi": 1,
     "capabilities": {
       "requires": [
-        {
-          "id": "ui.drawlist",
-          "version": 1
-        },
-        {
-          "id": "text.glyphs.baked",
-          "version": 1
-        },
-        {
-          "id": "input.buttons",
-          "version": 1
-        },
-        {
-          "id": "input.analog",
-          "version": 1,
-          "parameters": {
-            "sticks": 1
-          }
-        }
+        "ui.drawlist",
+        "text.glyphs.baked",
+        "input.buttons",
+        "input.analog.left"
       ]
     }
   },
@@ -35,27 +19,12 @@
     "entry": "game/openstrike.tsx",
     "output": "openstrike",
     "framework": "solid",
-    "simulationHz": 60,
     "viewport": {
       "logical": [
         480,
         272
       ],
       "presentation": "integer-fit"
-    }
-  },
-  "packages": {
-    "psp": {
-      "title": "OpenStrike",
-      "icon0": "crates/openstrike-psp/assets/ICON0.png",
-      "pic1": "crates/openstrike-psp/assets/PIC1.png",
-      "memoryBudgetMb": 20
-    },
-    "vita": {
-      "title": "OpenStrike",
-      "titleId": "OPSK00001",
-      "icon0": "crates/openstrike-psp/assets/ICON0.png",
-      "memoryBudgetMb": 64
     }
   }
 }

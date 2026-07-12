@@ -66,17 +66,18 @@ bun scripts/build-ui.ts --target vita
 ```
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
-requires the draw list, baked glyphs, buttons and one analog stick at a
+requires the draw list, baked glyphs, buttons and the left analog API at a
 480x272 logical `integer-fit` viewport; it does not claim touch, dynamic text,
 or a stock Pocket3D capability. Pocket3D remains an extension implemented by
 OpenStrike's custom native hosts. Every target build validates that manifest,
-runs target-specific TypeScript checks, writes `.pocket/<target>/plan.json`,
-and delegates compilation to `pocket compile` using the public
-`@pocketjs/framework/manifest` contract. Target artifacts are isolated under
+runs the ordinary reachable TypeScript check, writes
+`.pocket/<target>/plan.json`, and delegates compilation to `pocket compile`.
+The public `@pocketjs/framework/manifest` helpers verify the build-plan
+checksum, project stable `HostBuildInputs`, and generate Cargo's target, host
+ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
-another. The same target, host ABI, contract hash and logical/physical
-viewports are then passed into cargo, so a bundle cannot silently boot under
-a differently built Pocket host.
+another. At runtime PocketJS compares target and host ABI; the plan checksum
+is build-time consistency data, not a runtime trust mechanism.
 
 ### Map data
 
