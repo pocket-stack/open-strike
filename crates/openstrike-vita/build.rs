@@ -12,6 +12,20 @@ fn main() {
         .map(PathBuf::from)
         .unwrap_or_else(|| manifest.join("../../dist/pocket/vita"));
     let is_vita = env::var("TARGET").is_ok_and(|target| target.contains("vita"));
+    if is_vita {
+        let target = env::var("POCKETJS_TARGET")
+            .expect("POCKETJS_TARGET must come from PocketJS HostBuildInputs");
+        assert_eq!(
+            target, "vita",
+            "OpenStrike Vita requires POCKETJS_TARGET=vita"
+        );
+        let host_abi = env::var("POCKETJS_HOST_ABI")
+            .expect("POCKETJS_HOST_ABI must come from PocketJS HostBuildInputs");
+        assert_eq!(
+            host_abi, "2",
+            "OpenStrike Vita requires PocketJS Host ABI 2"
+        );
+    }
     let app = match env::var("POCKETJS_APP_OUTPUT") {
         Ok(app) if !app.is_empty() => app,
         _ if is_vita => {
@@ -23,6 +37,8 @@ fn main() {
     };
     println!("cargo:rerun-if-env-changed=POCKETJS_OUTPUT_DIR");
     println!("cargo:rerun-if-env-changed=POCKETJS_APP_OUTPUT");
+    println!("cargo:rerun-if-env-changed=POCKETJS_TARGET");
+    println!("cargo:rerun-if-env-changed=POCKETJS_HOST_ABI");
 
     let js_src = dist.join(format!("{app}.js"));
     let pak_src = dist.join(format!("{app}.pak"));

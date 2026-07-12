@@ -28,7 +28,9 @@ compiles the product JS/pak from its resolved plan, verifies the plan checksum,
 and projects stable target, host ABI and viewport inputs for the Pocket host.
 It then cooks every supplied BSP, stages the `.p3d` catalogue into the VPK,
 and invokes the pinned Rust toolchain. Map and WAD data is not committed or
-redistributed.
+redistributed. The custom host requires PocketJS Vita Host ABI 2 at build time
+and keeps the stable Vita title id `OPSK00001`, so installing another PocketJS
+demo does not replace OpenStrike or its LiveArea bubble.
 
 ## Controls
 

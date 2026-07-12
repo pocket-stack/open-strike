@@ -1,12 +1,14 @@
 #[cfg(target_os = "vita")]
 mod vita {
     use std::boxed::Box;
+    #[cfg(feature = "capture")]
     use std::format;
     use std::string::{String, ToString};
     use std::vec::Vec;
 
     use openstrike_core::sim::Command;
     use openstrike_core::StrikeSim;
+    #[cfg(feature = "capture")]
     use openstrike_vita::capture::CaptureScript;
     use openstrike_vita::input::{PadInput, PadSample};
     use openstrike_vita::map_data::{AlignedMapBuffer, MapCatalogue};
