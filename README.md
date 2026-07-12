@@ -15,7 +15,7 @@
 </p>
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
-The same game runs on desktop (wgpu) and on a real 2004 Sony PSP (sceGu) at a locked 60 fps — bottom shot is the PSP.</em></p>
+The same game targets desktop (wgpu), PSP (sceGu), and PS Vita (vita2d/GXM); the bottom shot is the real PSP running at a locked 60 fps.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -26,7 +26,7 @@ instantiates is documented in the engine repo's
 [RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
 
 ```
-crates/openstrike-core   the simulation — no_std Rust shared VERBATIM by both
+crates/openstrike-core   the simulation — portable Rust shared VERBATIM by all
                          targets (movement, bots, weapons, round state)
 crates/openstrike        the desktop build
   ├─ pocket3d            wgpu renderer, BSP worlds, collision, skeletal anim
@@ -35,8 +35,10 @@ crates/openstrike        the desktop build
   └─ strike surface      this game's vocabulary (src/guest.rs)
 crates/openstrike-psp    the PSP build: an EBOOT on pocket3d-gu (sceGu) and
                          the PocketJS PSP host — same surfaces, same bundle
+crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
+                         pocket3d-vita + PocketJS's vita2d/GXM host
 
-game/                    the product bundle (JS/TSX) — runs on BOTH targets
+game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
   ├─ rules.ts            the base game as the FIRST MOD: round flow, scoring,
   │                      weapon + bot tuning
@@ -163,6 +165,28 @@ flush per frame). Cooking bakes lightmaps into vertex colors, keeps WAD
 textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
 draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
 load on demand from `maps/` next to the EBOOT into one reused buffer.
+
+## PS Vita
+
+The Vita target runs the same simulation, JavaScript rules and Solid JSX HUD
+as desktop and PSP. Pocket3D renders at Vita's native 960×544, while the
+480×272 PocketJS UI is expanded exactly 2x to fill the screen. There is no
+letterboxing or crop. Touch is not implemented yet; both sticks, shoulders,
+d-pad, face buttons and SELECT cover gameplay and menus.
+
+```sh
+export VITASDK="$HOME/vitasdk"
+export PATH="$VITASDK/bin:$HOME/.cargo/bin:$PATH"
+
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release
+bun scripts/e2e-vita.ts
+```
+
+The VPK is written to `dist/vita/OpenStrike.vpk`. The Vita3K golden driver
+uses an isolated VitaFS, scripted dual-stick input, a guest completion marker,
+byte-exact 960×544 HUD captures, and native Pocket3D scene-stat assertions.
+See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
+the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
 

@@ -1,0 +1,54 @@
+# openstrike-vita — OpenStrike packaged as a native PS Vita VPK.
+#
+# The crate is intentionally excluded from the repository workspace. The Vita
+# target is tier 3 and is built through cargo-vita (`bun scripts/vita.ts`),
+# while the desktop workspace must stay buildable on stable host Rust.
+
+[package]
+name = "openstrike-vita"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+build = "build.rs"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+openstrike-core = { path = "../openstrike-core" }
+glam = "0.33"
+pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp" }
+
+[target.'cfg(target_os = "vita")'.dependencies]
+vitasdk-sys = { version = "0.3.3", features = [
+  "SceCtrl_stub",
+  "SceGxm_stub",
+  "SceKernelThreadMgr_stub",
+  "SceLibKernel_stub",
+] }
+vita2d-sys = "0.1.1"
+pocket3d-vita = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-vita" }
+pocketjs-vita = { path = "../../vendor/pocketjs/native-vita" }
+libquickjs-sys = { git = "https://github.com/doodlewind/quickjs-rs.git", rev = "20b758acad6fd4b10fbbfa6685123ed3e9b32483" }
+
+[features]
+# Compile deterministic scripted input + framebuffer dumps for Vita3K E2E.
+capture = ["pocketjs-vita/capture"]
+# Rolling frame timing output for real-hardware validation.
+bench = []
+
+[package.metadata.vita]
+title_id = "OPSK00001"
+title_name = "OpenStrike"
+# scripts/vita.ts stages cooked maps under static/maps before cargo-vita packs
+# the VPK. Valve-owned map data remains ignored by git.
+assets = "static"
+build_std = "std,panic_abort"
+vita_make_fself_flags = ["-s"]
+vita_mksfoex_flags = ["-d", "ATTRIBUTE2=12"]
+
+[package.metadata.vita.profile.dev]
+strip_symbols = false
+
+[package.metadata.vita.profile.release]
+strip_symbols = false

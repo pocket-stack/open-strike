@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "setup": "cd vendor/pocketjs && bun install && cd ../.. && mkdir -p node_modules && ln -sfn ../vendor/pocketjs/node_modules/solid-js node_modules/solid-js",
-    "build:ui": "bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist"
+    "build:ui": "bun vendor/pocketjs/scripts/build.ts game/openstrike.tsx --outdir=dist",
+    "build:vita": "bun scripts/vita.ts",
+    "test:e2e:vita": "bun scripts/e2e-vita.ts"
   }
 }
