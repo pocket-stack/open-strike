@@ -10,8 +10,8 @@
 # loop. The same dist/pocket/psp/openstrike.{js,pak} bundle as desktop is
 # embedded — the rules mod and JSX HUD run unmodified on the handheld.
 #
-# All vendor paths resolve inside vendor/: rust-psp + quickjs-rs are
-# submodules there, and vendor/pocketjs's own relative deps land on them.
+# PocketJS and this host share exact organization-owned rust-psp / QuickJS
+# revisions, so Cargo resolves one copy of each runtime crate.
 
 [package]
 name = "openstrike-psp"
@@ -19,8 +19,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-psp = { path = "../../vendor/rust-psp/psp", features = ["external-c-heap", "abort-only", "external-global-alloc"] }
-libquickjs-sys = { path = "../../vendor/quickjs-rs/libquickjs-sys" }
+psp = { git = "https://github.com/pocket-stack/rust-psp.git", rev = "2cbaf8c9bc72569c76240a1d9743de10731e5f6b", features = ["external-c-heap", "abort-only", "external-global-alloc"] }
+libquickjs-sys = { git = "https://github.com/pocket-stack/quickjs-rs.git", rev = "0fc946fb670c0c29bc0135f510bcb0f595415a61" }
 pocketjs-psp = { path = "../../vendor/pocketjs/native" }
 pocketjs-core = { path = "../../vendor/pocketjs/core" }
 pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
