@@ -19,6 +19,11 @@ import {
   readdirSync,
   rmSync,
 } from "node:fs";
+import {
+  DEFAULT_VITA_PACKAGE_ASSETS,
+  VITA_REQUIRED_SYSTEM_ASSETS,
+  VITA_SYSTEM_ASSET_PATHS,
+} from "../vendor/pocketjs/scripts/vita-package.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -32,6 +37,7 @@ const configFile = `${configDir}/config.yml`;
 const titleId = "OPSK00001";
 const appDir = `${vitaFs}/ux0/app/${titleId}`;
 const capDir = `${vitaFs}/ux0/data/openstrike-vita/cap`;
+const packageIcon = `${repo}crates/openstrike-vita/static/sce_sys/icon0.png`;
 const baseConfigCandidates = [
   process.env.VITA3K_CONFIG,
   `${home}/Library/Application Support/Vita3K/Vita3K/config.yml`,
@@ -129,6 +135,15 @@ async function prepareProfile(vpk: string): Promise<void> {
   rmSync(appDir, { recursive: true, force: true });
   mkdirSync(appDir, { recursive: true });
   await $`unzip -oq ${vpk} -d ${appDir}`.quiet();
+  for (const path of VITA_REQUIRED_SYSTEM_ASSETS) {
+    const installed = `${appDir}/${path}`;
+    const expected = path === VITA_SYSTEM_ASSET_PATHS.icon
+      ? packageIcon
+      : `${DEFAULT_VITA_PACKAGE_ASSETS}/${path}`;
+    if (!existsSync(installed) || !readFileSync(installed).equals(readFileSync(expected))) {
+      throw new Error(`OpenStrike VPK is missing its byte-exact ${path}`);
+    }
+  }
   mkdirSync(`${vitaFs}/ux0/data`, { recursive: true });
   mkdirSync(`${vitaFs}/ux0/user/00`, { recursive: true });
   await Bun.write(

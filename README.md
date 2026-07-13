@@ -211,9 +211,12 @@ OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release # resolved Vita 
 bun scripts/e2e-vita.ts
 ```
 
-The VPK is written to `dist/vita/OpenStrike.vpk`. The Vita3K golden driver
-uses an isolated VitaFS, scripted dual-stick input, a guest completion marker,
-byte-exact 960×544 HUD captures, and native Pocket3D scene-stat assertions.
+The VPK is written to `dist/vita/OpenStrike.vpk`. PocketJS's shared Vita
+packager combines OpenStrike's branded 128×128 icon and cooked maps with the
+framework's black 840×500 background, 280×158 startup image, and LiveArea
+template. The Vita3K golden driver uses an isolated VitaFS, scripted dual-stick
+input, a guest completion marker, byte-exact 960×544 HUD captures, and native
+Pocket3D scene-stat assertions.
 See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
 the pinned toolchain, controls and emulator-capture details.
 

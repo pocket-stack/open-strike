@@ -17,6 +17,7 @@ import {
   statSync,
 } from "node:fs";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
+import { packageVitaVpk } from "../vendor/pocketjs/scripts/vita-package.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -75,8 +76,9 @@ for (const file of bsps) {
   );
 }
 
-// cargo-vita recursively adds `package.metadata.vita.assets`. Recreate the map
-// subtree so a removed source map cannot survive in a later VPK.
+// Recreate the application overlay's map subtree so a removed source map
+// cannot survive in a later VPK. PocketJS's shared final packer merges this
+// VPK-relative `static` tree over the framework LiveArea defaults.
 const stagedMaps = `${vitaDir}static/maps`;
 rmSync(stagedMaps, { recursive: true, force: true });
 mkdirSync(stagedMaps, { recursive: true });
@@ -120,11 +122,22 @@ const env = {
 console.log(`openstrike-vita: cargo vita (map=${mapName}, profile=${profile})`);
 await $`${rustup} run ${toolchain} cargo vita build vpk -- ${cargoArgs}`.cwd(vitaDir).env(env);
 
-const artifact = `${vitaDir}target/armv7-sony-vita-newlibeabihf/${profile}/openstrike-vita.vpk`;
-if (!existsSync(artifact)) {
-  console.error(`cargo-vita completed but no VPK was found at ${artifact}`);
+const targetDirectory = `${vitaDir}target/armv7-sony-vita-newlibeabihf/${profile}`;
+const artifact = `${targetDirectory}/openstrike-vita.vpk`;
+const sfo = `${targetDirectory}/openstrike-vita.sfo`;
+const eboot = `${targetDirectory}/openstrike-vita.self`;
+if (![artifact, sfo, eboot].every(existsSync)) {
+  console.error(`cargo-vita completed but package inputs are incomplete under ${targetDirectory}`);
   process.exit(1);
 }
+
+await packageVitaVpk({
+  tool: `${vitaSdk}/bin/vita-pack-vpk`,
+  sfo,
+  eboot,
+  output: artifact,
+  applicationAssets: `${vitaDir}static`,
+});
 
 const packaged = `${repo}dist/vita/OpenStrike.vpk`;
 mkdirSync(`${repo}dist/vita`, { recursive: true });

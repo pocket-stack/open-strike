@@ -9,6 +9,7 @@
     "check:platforms": "bun run typecheck && bun vendor/pocketjs/scripts/pocket.ts check --target psp && bun vendor/pocketjs/scripts/pocket.ts check --target vita",
     "build:ui": "bun scripts/build-ui.ts --target psp",
     "build:vita": "bun scripts/vita.ts",
+    "test:vita-package": "bun test test/openstrike-vita-artwork.test.ts",
     "test:e2e:vita": "bun scripts/e2e-vita.ts",
     "test:psp-toolchain": "bun test test/psp-toolchain.test.ts"
   }
