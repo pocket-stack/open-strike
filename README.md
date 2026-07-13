@@ -60,10 +60,21 @@ game grants itself no privileges a mod wouldn't have.
 git clone --recursive https://github.com/pocket-stack/open-strike
 cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
+bun run bootstrap  # install the pinned PSP toolchain into the shared cache
 bun run check:platforms
 bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
 bun scripts/build-ui.ts --target vita
 ```
+
+PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
+`PSPDEV`, then Pocket's versioned shared cache at
+`$XDG_CACHE_HOME/pocket-stack/psp/sdk/sdk-noabicalls-normalized-2026-06-19/mipsel-sony-psp`
+(or the same path under `~/.cache`). Both SDK environment variables are then
+exported to the build, so Rust and QuickJS cannot silently select different
+toolchains. The vendored PocketJS manifest pins the organization-owned
+`pocket-stack/pspdev`, `pocket-stack/rust-psp`, and
+`pocket-stack/quickjs-rs` revisions used by every PSP build; no DreamCart or
+personal-fork checkout is required.
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
 requires the draw list, baked glyphs, buttons and the left analog API at a
@@ -158,7 +169,7 @@ SELECT to return there mid-round.
 deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
-git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
+git submodule update --init          # pocket-stack/pocketjs + rust-psp + quickjs-rs
 bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back

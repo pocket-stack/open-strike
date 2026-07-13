@@ -6,12 +6,12 @@
 //   OPENSTRIKE_MAPS=~/cs bun scripts/psp.ts
 //
 // Maps root (maps/*.bsp + support/*.wad) comes from OPENSTRIKE_MAPS or the
-// local default. The PSP SDK is discovered like vendor/pocketjs/scripts/
-// psp.ts (PSP_SDK env or the dreamcart checkout); PSPDEV is exported for
-// libquickjs-sys's own include resolution.
+// local default. The PSP SDK resolver uses the explicit PSP_SDK / PSPDEV
+// contract before Pocket's shared, versioned toolchain cache.
 
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { resolvePspBuildToolchain } from "../vendor/pocketjs/scripts/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
@@ -58,25 +58,19 @@ for (const f of bsps) {
 }
 
 // ---- 3. cargo psp ---------------------------------------------------------
-const sdkCandidates = [
-  process.env.PSP_SDK,
-  `${home}/code/dreamcart/mipsel-sony-psp`,
-].filter((p): p is string => !!p);
-const sdk = sdkCandidates.find((p) => existsSync(`${p}/psp/lib/libc.a`));
-if (!sdk) {
-  console.error("PSP SDK not found (set PSP_SDK)");
+let toolchain: ReturnType<typeof resolvePspBuildToolchain>;
+try {
+  toolchain = resolvePspBuildToolchain();
+} catch (error) {
+  console.error(`openstrike-psp: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }
-const llvm = existsSync("/opt/homebrew/opt/llvm/bin")
-  ? "/opt/homebrew/opt/llvm/bin"
-  : "/usr/local/opt/llvm/bin";
-const TOOLCHAIN = "nightly-2026-05-28";
-const rustup = Bun.which("rustup") ?? `${home}/.cargo/bin/rustup`;
+const sdk = toolchain.sdk.path;
+const llvm = toolchain.llvmBin;
 
 const env = {
-  ...process.env,
+  ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
-  PATH: `${llvm}:${home}/.cargo/bin:${process.env.PATH}`,
   // newlib (QuickJS needs -lc) and rust-psp both define memcpy/_exit/truncf
   // with identical semantics; whichever the linker sees first wins.
   RUSTFLAGS:
@@ -89,8 +83,6 @@ const env = {
     `-fno-stack-protector -I${sdk}/psp/include -I${sdk}/psp/sdk/include`,
   AR_mipsel_sony_psp: `${llvm}/llvm-ar`,
   RANLIB_mipsel_sony_psp: `${llvm}/llvm-ranlib`,
-  // libquickjs-sys resolves the SDK through PSPDEV (…/psp appended).
-  PSPDEV: sdk,
   RUST_PSP_TARGET: `${repo}vendor/pocketjs/native/targets/mipsel-sony-psp.json`,
   RUST_PSP_ABORT_ONLY: "1",
   CARGO_PROFILE_DEV_OPT_LEVEL: process.env.CARGO_PROFILE_DEV_OPT_LEVEL ?? "3",
@@ -116,7 +108,7 @@ const cargoArgs: string[] = [];
 if (release) cargoArgs.push("--release");
 if (features.length) cargoArgs.push(`--features=${features.join(",")}`);
 console.log(`openstrike-psp: cargo psp (map=${mapName})`);
-await $`${rustup} run ${TOOLCHAIN} cargo psp ${cargoArgs}`.cwd(pspDir).env(env);
+await $`${toolchain.rustup} run ${toolchain.manifest.rust.toolchain} cargo psp ${cargoArgs}`.cwd(pspDir).env(env);
 
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
