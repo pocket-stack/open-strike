@@ -15,7 +15,7 @@
 </p>
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
-The same game runs on desktop (wgpu) and on a real 2004 Sony PSP (sceGu) at a locked 60 fps — bottom shot is the PSP.</em></p>
+The same game targets desktop (wgpu), PSP (sceGu), and PS Vita (vita2d/GXM); the bottom shot is the real PSP running at a locked 60 fps.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -26,7 +26,7 @@ instantiates is documented in the engine repo's
 [RUNTIMES.md](https://github.com/pocket-stack/pocketjs/blob/main/RUNTIMES.md).
 
 ```
-crates/openstrike-core   the simulation — no_std Rust shared VERBATIM by both
+crates/openstrike-core   the simulation — portable Rust shared VERBATIM by all
                          targets (movement, bots, weapons, round state)
 crates/openstrike        the desktop build
   ├─ pocket3d            wgpu renderer, BSP worlds, collision, skeletal anim
@@ -35,8 +35,10 @@ crates/openstrike        the desktop build
   └─ strike surface      this game's vocabulary (src/guest.rs)
 crates/openstrike-psp    the PSP build: an EBOOT on pocket3d-gu (sceGu) and
                          the PocketJS PSP host — same surfaces, same bundle
+crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
+                         pocket3d-vita + PocketJS's vita2d/GXM host
 
-game/                    the product bundle (JS/TSX) — runs on BOTH targets
+game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
   ├─ rules.ts            the base game as the FIRST MOD: round flow, scoring,
   │                      weapon + bot tuning
@@ -58,8 +60,24 @@ game grants itself no privileges a mod wouldn't have.
 git clone --recursive https://github.com/pocket-stack/open-strike
 cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
-bun run build:ui   # game/openstrike.tsx -> dist/openstrike.{js,pak}
+bun run check:platforms
+bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun scripts/build-ui.ts --target vita
 ```
+
+[`pocket.json`](pocket.json) is the portable Pocket application contract. It
+requires the draw list, baked glyphs, buttons and the left analog API at a
+480x272 logical `integer-fit` viewport; it does not claim touch, dynamic text,
+or a stock Pocket3D capability. Pocket3D remains an extension implemented by
+OpenStrike's custom native hosts. Every target build validates that manifest,
+runs the ordinary reachable TypeScript check, writes
+`.pocket/<target>/plan.json`, and delegates compilation to `pocket compile`.
+The public `@pocketjs/framework/manifest` helpers verify the build-plan
+checksum, project stable `HostBuildInputs`, and generate Cargo's target, host
+ABI and viewport environment. Target artifacts are isolated under
+`dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
+another. At runtime PocketJS compares target and host ABI; the plan checksum
+is build-time consistency data, not a runtime trust mechanism.
 
 ### Map data
 
@@ -126,10 +144,10 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
-demo: the identical `dist/openstrike.js` bundle that drives the desktop build
-boots in QuickJS on the handheld. It ships as a proper EBOOT — branded XMB
-icon and backdrop, a main menu that lists every cooked map, and SELECT to
-return there mid-round.
+demo: the identical `dist/pocket/psp/openstrike.js` bundle that drives the
+desktop build boots in QuickJS on the handheld. It ships as a proper EBOOT —
+branded XMB icon and backdrop, a main menu that lists every cooked map, and
+SELECT to return there mid-round.
 
 <p align="center">
   <img src="docs/psp-menu.png" width="400" alt="OpenStrike PSP main menu — a two-column map list (all eight CS classics) under the wordmark" />
@@ -141,7 +159,7 @@ deterministic backend the byte-exact e2e goldens run on.</em></p>
 
 ```sh
 git submodule update --init          # pocketjs + rust-psp + quickjs-rs forks
-bun scripts/psp.ts                   # bundle → cook every map → cargo psp EBOOT
+bun scripts/psp.ts                   # resolve PSP plan → bundle → maps → EBOOT
 bun scripts/psp.ts --package         # + assemble dist/PSP/GAME/OpenStrike (ms0 layout)
 bun scripts/hw.ts --bench            # launch over PSPLINK; frame times stream back
 bun scripts/e2e-psp.ts               # deterministic PPSSPP goldens (spawn/walk/fire)
@@ -163,6 +181,30 @@ flush per frame). Cooking bakes lightmaps into vertex colors, keeps WAD
 textures as swizzled CLUT8 with full mip chains, and ships PVS so the renderer
 draws only the visible leaves; each `.p3d` is consumed zero-copy, and maps
 load on demand from `maps/` next to the EBOOT into one reused buffer.
+
+## PS Vita
+
+The Vita target runs the same simulation, JavaScript rules and Solid JSX HUD
+as desktop and PSP. Pocket3D renders at Vita's native 960×544, while the
+PocketJS UI keeps its 480×272 logical layout and rasterizes at Vita's native
+2× density. Text, curves and rounded corners therefore use the full 960×544
+pixel grid instead of duplicating PSP pixels. There is no letterboxing or
+crop. Touch is not implemented yet; both sticks, shoulders, d-pad, face
+buttons and SELECT cover gameplay and menus.
+
+```sh
+export VITASDK="$HOME/vitasdk"
+export PATH="$VITASDK/bin:$HOME/.cargo/bin:$PATH"
+
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun scripts/vita.ts --release # resolved Vita plan → VPK
+bun scripts/e2e-vita.ts
+```
+
+The VPK is written to `dist/vita/OpenStrike.vpk`. The Vita3K golden driver
+uses an isolated VitaFS, scripted dual-stick input, a guest completion marker,
+byte-exact 960×544 HUD captures, and native Pocket3D scene-stat assertions.
+See [`crates/openstrike-vita/README.md`](crates/openstrike-vita/README.md) for
+the pinned toolchain, controls and emulator-capture details.
 
 ## Modding, v0.1 shape
 

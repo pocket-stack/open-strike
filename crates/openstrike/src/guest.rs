@@ -43,14 +43,14 @@ struct OverlayGfx {
     target_format: wgpu::TextureFormat,
 }
 
-/// Locate the built product bundle (dist/openstrike.js + .pak).
+/// Locate the PSP-baseline product bundle (`dist/pocket/psp`).
 pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(d) = std::env::var_os("OPENSTRIKE_UI_DIST") {
         roots.push(PathBuf::from(d));
     }
-    roots.push(PathBuf::from("dist"));
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist"));
+    roots.push(PathBuf::from("dist/pocket/psp"));
+    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist/pocket/psp"));
     for root in &roots {
         let js = root.join("openstrike.js");
         let pak = root.join("openstrike.pak");
@@ -60,7 +60,7 @@ pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
     }
     Err(anyhow!(
         "HUD/rules bundle not found — build it first: `bun run build:ui` \
-         (searched dist/ next to the repo root; override with OPENSTRIKE_UI_DIST)"
+         (searched dist/pocket/psp next to the repo root; override with OPENSTRIKE_UI_DIST)"
     ))
 }
 

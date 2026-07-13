@@ -10,7 +10,8 @@ import Hud from "./hud.tsx";
 import MainMenu from "./menu.tsx";
 import { strike } from "./sdk.ts";
 
-// Phase-switched root: menu hosts (the PSP EBOOT) boot into phase "menu";
+// Phase-switched root: handheld menu hosts (PSP EBOOT / Vita VPK) boot into
+// phase "menu";
 // hosts that pre-load a map (desktop --map) never publish it and go
 // straight to the HUD. The menu<->game swap is structural but rare.
 function App() {

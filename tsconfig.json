@@ -14,5 +14,5 @@
       "@pocketjs/framework/*": ["./vendor/pocketjs/src/*"]
     }
   },
-  "include": ["game"]
+  "include": ["game", "scripts"]
 }

@@ -42,7 +42,7 @@ export default function MainMenu() {
 
   // Focus: light the first map on mount and give the grid real 2-column
   // d-pad semantics (↕ moves a whole row, ↔ moves within it).
-  let grid!: never;
+  let grid!: Parameters<typeof pushFocusGrid>[0];
   onMount(() => {
     const disposeGrid = pushFocusGrid(grid, { columns: 2, wrap: true });
     const disposeScope = pushFocusScope(grid, { autoFocus: true });
@@ -75,7 +75,7 @@ export default function MainMenu() {
 
         {/* Map grid: two columns so eight maps + masthead fit 272 px */}
         <View
-          ref={(el: never) => (grid = el)}
+          ref={(el) => (grid = el)}
           class="flex-row flex-wrap gap-1 mt-3 justify-center"
           style={{ width: 300 * S }}
         >

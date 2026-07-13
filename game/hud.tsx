@@ -56,7 +56,7 @@ const FEED_ROWS = 3;
 const BAR_W = 90;
 const AMMO_BAR_W = 64;
 
-type Ref = Parameters<typeof hot.text>[0];
+type Ref = NonNullable<Parameters<typeof hot.text>[0]>;
 
 export default function Hud() {
   const s0 = strike.state();
@@ -230,26 +230,26 @@ export default function Hud() {
     <View class="w-full h-full">
       {/* Damage flash + death vignette (pre-mounted, hot opacity) */}
       <View
-        ref={(el: never) => (flashOverlay = el)}
+        ref={(el) => (flashOverlay = el)}
         class="absolute inset-0"
         style={{ bgColor: "#c40e0e", opacity: 0, zIndex: 5 }}
       />
       <View
-        ref={(el: never) => (vignette = el)}
+        ref={(el) => (vignette = el)}
         class="absolute inset-0"
         style={{ bgColor: "#2a0404", opacity: 0, zIndex: 5 }}
       />
 
       {/* Crosshair + hitmarker */}
       <View
-        ref={(el: never) => (crosshair = el)}
+        ref={(el) => (crosshair = el)}
         class="absolute inset-0 justify-center items-center"
         style={{ zIndex: 10 }}
       >
         <View style={{ width: 36 * S, height: 36 * S }}>
           <Cross color={LIME} gap={11 * S} len={8 * S} thick={2 * S} />
           <View
-            ref={(el: never) => (hitmarker = el)}
+            ref={(el) => (hitmarker = el)}
             class="absolute inset-0"
             style={{ opacity: 0 }}
           >
@@ -340,12 +340,12 @@ export default function Hud() {
             </View>
             {Array.from({ length: FEED_ROWS }, (_, i) => (
               <View
-                ref={(el: never) => (feedRows[i] = el)}
+                ref={(el) => (feedRows[i] = el)}
                 class="px-2 py-1 rounded-sm"
                 style={{ bgColor: STRIP, opacity: 0 }}
               >
                 <Text
-                  ref={(el: never) => (feedTexts[i] = el)}
+                  ref={(el) => (feedTexts[i] = el)}
                   class={
                     S >= 2
                       ? "text-sm font-bold tracking-wide"
@@ -383,7 +383,7 @@ export default function Hud() {
                 HP
               </Text>
               <Text
-                ref={(el: never) => (hpText = el)}
+                ref={(el) => (hpText = el)}
                 class={S >= 2 ? "text-4xl font-bold" : "text-lg font-bold"}
                 style={{
                   textColor: INK,
@@ -396,7 +396,7 @@ export default function Hud() {
             </View>
             <View style={{ width: BAR_W * S, height: 2 * S, bgColor: "#e8f0f21c" }}>
               <View
-                ref={(el: never) => (hpFill = el)}
+                ref={(el) => (hpFill = el)}
                 style={{ width: BAR_W * S, height: 2 * S, bgColor: INK }}
               />
             </View>
@@ -404,7 +404,7 @@ export default function Hud() {
           {/* Ammo: fixed mag cell / reserve + reload bar (all pre-mounted) */}
           <View class="flex-col items-end gap-1">
             <View
-              ref={(el: never) => (reloadGroup = el)}
+              ref={(el) => (reloadGroup = el)}
               class="flex-col items-end gap-1"
               style={{ opacity: 0 }}
             >
@@ -420,7 +420,7 @@ export default function Hud() {
               </Text>
               <View style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: "#e8f0f21c" }}>
                 <View
-                  ref={(el: never) => (reloadFill = el)}
+                  ref={(el) => (reloadFill = el)}
                   style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: AMBER }}
                 />
               </View>
@@ -434,7 +434,7 @@ export default function Hud() {
               style={{ bgColor: STRIP }}
             >
               <Text
-                ref={(el: never) => (ammoText = el)}
+                ref={(el) => (ammoText = el)}
                 class={S >= 2 ? "text-4xl font-bold" : "text-lg font-bold"}
                 style={{
                   textColor: INK,
@@ -457,7 +457,7 @@ export default function Hud() {
             </View>
             <View style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: "#e8f0f21c" }}>
               <View
-                ref={(el: never) => (ammoFill = el)}
+                ref={(el) => (ammoFill = el)}
                 style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: LIME }}
               />
             </View>
@@ -483,7 +483,7 @@ export default function Hud() {
  *  choice); ↔ moves between the two buttons, each with a clear selected
  *  state (neutral for STAY, danger-red for QUIT), `○` confirms the lit one. */
 function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
-  let panel!: never;
+  let panel!: Ref;
   onMount(() => {
     const dispose = pushFocusScope(panel, { autoFocus: true, restoreFocus: true });
     onCleanup(dispose);
@@ -503,7 +503,7 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
         >
           RETURN TO MAIN MENU?
         </Text>
-        <View ref={(el: never) => (panel = el)} class="flex-row gap-2">
+        <View ref={(el) => (panel = el)} class="flex-row gap-2">
           <View
             focusable
             onPress={props.onStay}

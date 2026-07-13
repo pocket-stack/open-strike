@@ -1,0 +1,29 @@
+{
+  "$schema": "https://pocket-stack.dev/schema/pocket-2.json",
+  "pocket": 2,
+  "id": "dev.pocket-stack.openstrike",
+  "name": "open-strike",
+  "title": "OpenStrike",
+  "version": "0.1.0",
+  "engine": {
+    "capabilities": {
+      "requires": [
+        "text.glyphs.baked",
+        "input.buttons",
+        "input.analog.left"
+      ]
+    }
+  },
+  "app": {
+    "entry": "game/openstrike.tsx",
+    "output": "openstrike",
+    "framework": "solid",
+    "viewport": {
+      "logical": [
+        480,
+        272
+      ],
+      "presentation": "integer-fit"
+    }
+  }
+}
