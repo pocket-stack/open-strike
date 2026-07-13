@@ -40,9 +40,8 @@ bench = []
 [package.metadata.vita]
 title_id = "OPSK00001"
 title_name = "OpenStrike"
-# scripts/vita.ts stages cooked maps under static/maps before cargo-vita packs
-# the VPK. Valve-owned map data remains ignored by git.
-assets = "static"
+# scripts/vita.ts passes static/ to PocketJS's shared final packer, which
+# overlays the branded icon and cooked maps on the complete default LiveArea.
 build_std = "std,panic_abort"
 vita_make_fself_flags = ["-s"]
 vita_mksfoex_flags = ["-d", "ATTRIBUTE2=12"]
