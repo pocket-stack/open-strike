@@ -1629,6 +1629,7 @@ dependencies = [
  "png",
  "pocket3d-bsp",
  "pollster",
+ "serde_json",
  "wgpu",
  "winit",
 ]

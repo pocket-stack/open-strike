@@ -307,9 +307,14 @@ function assertNativeDetail(raw: Buffer, label: string): void {
 interface SceneTelemetry {
   cameraYaw: number;
   cameraPitch: number;
+  effectTriangles: number;
 }
 
-function assertLiveScene(scenePath: string, label: string): SceneTelemetry {
+function assertLiveScene(
+  scenePath: string,
+  label: string,
+  expectEffects: boolean,
+): SceneTelemetry {
   if (!existsSync(scenePath)) throw new Error(`${label}: scene sidecar missing`);
   const values = Object.fromEntries(
     readFileSync(scenePath, "utf8")
@@ -317,18 +322,63 @@ function assertLiveScene(scenePath: string, label: string): SceneTelemetry {
       .split("\n")
       .map((line) => line.split("=", 2)),
   );
-  for (const field of ["world_faces", "world_tris", "submitted_tris", "draw_calls"]) {
+  if (values.renderer !== "gxm") {
+    throw new Error(`${label}: expected renderer=gxm, got ${values.renderer ?? "missing"}`);
+  }
+  for (const field of ["gxm_error", "geometry_error", "texture_error"]) {
+    if (values[field] !== "none") {
+      throw new Error(`${label}: ${field}=${values[field] ?? "missing"}`);
+    }
+  }
+  for (const field of [
+    "geometry_resident",
+    "world_faces",
+    "world_tris",
+    "world_direct_draw_calls",
+    "submitted_tris",
+    "draw_calls",
+  ]) {
     const value = Number(values[field]);
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${label}: ${field} must be positive, got ${values[field] ?? "missing"}`);
     }
+  }
+  if (Number(values.geometry_resident) !== 1) {
+    throw new Error(`${label}: geometry_resident must be 1`);
+  }
+  for (const field of ["dropped_triangles", "submission_errors"]) {
+    if (Number(values[field]) !== 0) {
+      throw new Error(`${label}: ${field} must be zero, got ${values[field] ?? "missing"}`);
+    }
+  }
+  const worldTriangles = Number(values.world_tris);
+  const submittedTriangles = Number(values.submitted_tris);
+  const drawCalls = Number(values.draw_calls);
+  if (submittedTriangles < worldTriangles) {
+    throw new Error(
+      `${label}: submitted_tris ${submittedTriangles} is below world_tris ${worldTriangles}`,
+    );
+  }
+  // The old CPU-projected backend emitted almost one draw per triangle. The
+  // indexed GXM backend must retain a wide batching margin on this fixed map.
+  if (drawCalls * 8 >= submittedTriangles) {
+    throw new Error(
+      `${label}: ${drawCalls} draws for ${submittedTriangles} triangles misses the GXM batching budget`,
+    );
+  }
+  const effectTriangles = Number(values.effect_tris);
+  if (!Number.isFinite(effectTriangles) || effectTriangles < 0) {
+    throw new Error(`${label}: invalid effect_tris=${values.effect_tris ?? "missing"}`);
+  }
+  if (expectEffects && effectTriangles <= 0) {
+    throw new Error(`${label}: scripted fire frame submitted no additive effect triangles`);
   }
   const cameraYaw = Number(values.camera_yaw);
   const cameraPitch = Number(values.camera_pitch);
   if (!Number.isFinite(cameraYaw) || !Number.isFinite(cameraPitch)) {
     throw new Error(`${label}: finite camera_yaw/camera_pitch telemetry is required`);
   }
-  return { cameraYaw, cameraPitch };
+  return { cameraYaw, cameraPitch, effectTriangles };
 }
 
 function assertLookProbe(
@@ -395,7 +445,10 @@ for (const spec of selectedSpecs) {
     try {
       const raw = readFileSync(rawPath);
       assertNativeDetail(raw, label);
-      telemetry.set(shot, assertLiveScene(`${capDir}/${stem}.scene`, label));
+      telemetry.set(
+        shot,
+        assertLiveScene(`${capDir}/${stem}.scene`, label, spec.name === "fire"),
+      );
 
       const png = `${outDir}/${label}.png`;
       await $`magick -size 960x544 -depth 8 RGBA:${rawPath} -alpha off -define png:exclude-chunks=date,time PNG24:${png}`.quiet();
