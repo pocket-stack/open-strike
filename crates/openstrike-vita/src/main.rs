@@ -35,6 +35,88 @@ mod vita {
     #[cfg(feature = "capture")]
     const CAPTURE_ROOT: &str = "ux0:data/openstrike-vita/cap";
 
+    #[cfg(feature = "bench")]
+    struct BenchWindow {
+        frames: u64,
+        frame_sum_us: u64,
+        cpu_sum_us: u64,
+        render_sync_sum_us: u64,
+        max_frame_us: u64,
+        max_cpu_us: u64,
+        max_render_sync_us: u64,
+    }
+
+    #[cfg(feature = "bench")]
+    struct BenchSample {
+        frames: u64,
+        elapsed_us: u64,
+        avg_frame_us: u64,
+        max_frame_us: u64,
+        avg_cpu_us: u64,
+        max_cpu_us: u64,
+        avg_render_sync_us: u64,
+        max_render_sync_us: u64,
+    }
+
+    #[cfg(feature = "bench")]
+    impl BenchWindow {
+        fn new() -> Self {
+            Self {
+                frames: 0,
+                frame_sum_us: 0,
+                cpu_sum_us: 0,
+                render_sync_sum_us: 0,
+                max_frame_us: 0,
+                max_cpu_us: 0,
+                max_render_sync_us: 0,
+            }
+        }
+
+        fn record(
+            &mut self,
+            frame_started_us: u64,
+            render_started_us: u64,
+            frame_finished_us: u64,
+        ) -> Option<BenchSample> {
+            let frame_us = frame_finished_us.saturating_sub(frame_started_us);
+            let cpu_us = render_started_us.saturating_sub(frame_started_us);
+            // Includes the previous-frame GXM drain in begin_frame and any
+            // swap/vblank pacing in present; it is deliberately not labelled
+            // as pure CPU render or GPU execution time.
+            let render_sync_us = frame_finished_us.saturating_sub(render_started_us);
+            self.frame_sum_us += frame_us;
+            self.cpu_sum_us += cpu_us;
+            self.render_sync_sum_us += render_sync_us;
+            self.max_frame_us = self.max_frame_us.max(frame_us);
+            self.max_cpu_us = self.max_cpu_us.max(cpu_us);
+            self.max_render_sync_us = self.max_render_sync_us.max(render_sync_us);
+            self.frames += 1;
+            if self.frames < 300 {
+                return None;
+            }
+
+            let elapsed_us = self.frame_sum_us.max(1);
+            let sample = BenchSample {
+                frames: self.frames,
+                elapsed_us,
+                avg_frame_us: elapsed_us / self.frames,
+                max_frame_us: self.max_frame_us,
+                avg_cpu_us: self.cpu_sum_us / self.frames,
+                max_cpu_us: self.max_cpu_us,
+                avg_render_sync_us: self.render_sync_sum_us / self.frames,
+                max_render_sync_us: self.max_render_sync_us,
+            };
+            self.frames = 0;
+            self.frame_sum_us = 0;
+            self.cpu_sum_us = 0;
+            self.render_sync_sum_us = 0;
+            self.max_frame_us = 0;
+            self.max_cpu_us = 0;
+            self.max_render_sync_us = 0;
+            Some(sample)
+        }
+    }
+
     #[no_mangle]
     #[used]
     pub static sceUserMainThreadStackSize: u32 = 2 * 1024 * 1024;
@@ -94,15 +176,28 @@ mod vita {
         index: u32,
         world_faces: u32,
         world_tris: u32,
+        world_direct_draw_calls: u32,
+        geometry_resident: bool,
+        geometry_error: Option<&str>,
+        texture_error: Option<pocket3d_vita::texture::UploadError>,
         frame_pool: &FramePool,
         camera: &Camera3d,
     ) -> Result<(), String> {
         let image = format!("{CAPTURE_ROOT}/f{index:04}.rgba");
         unsafe { runtime.capture_golden(&image) }.map_err(|error| error.to_string())?;
+        let gxm_error = unsafe { pocket3d_vita::last_gxm_error() }.unwrap_or("none");
+        let geometry_error = geometry_error.unwrap_or("none");
+        let texture_error = texture_error
+            .map(|error| format!("{error:?}"))
+            .unwrap_or_else(|| "none".to_string());
         let scene = format!(
-            "world_faces={world_faces}\nworld_tris={world_tris}\nsubmitted_tris={}\ndraw_calls={}\ncamera_yaw={}\ncamera_pitch={}\n",
+            "renderer=gxm\ngxm_error={gxm_error}\ngeometry_resident={}\ngeometry_error={geometry_error}\ntexture_error={texture_error}\nworld_faces={world_faces}\nworld_tris={world_tris}\nworld_direct_draw_calls={world_direct_draw_calls}\nsubmitted_tris={}\ndraw_calls={}\ndropped_triangles={}\nsubmission_errors={}\neffect_tris={}\ncamera_yaw={}\ncamera_pitch={}\n",
+            u8::from(geometry_resident),
             frame_pool.last.triangles,
             frame_pool.last.draw_calls,
+            frame_pool.last.dropped_triangles,
+            frame_pool.last.submission_errors,
+            frame_pool.last.additive_triangles,
             camera.yaw,
             camera.pitch,
         );
@@ -147,8 +242,11 @@ mod vita {
         let sky = SkyParams::default();
         let rifle = present_data::build_rifle();
         let bot_body = present_data::build_bot_body();
+        let mut effect_geometry = present_data::EffectGeometry::default();
         let mut menu_time = 0.0f64;
         let mut frame = 0u32;
+        #[cfg(feature = "bench")]
+        let mut bench_window = BenchWindow::new();
 
         #[cfg(feature = "capture")]
         let capture_script = CaptureScript::parse(CAPTURE_INPUT);
@@ -160,6 +258,8 @@ mod vita {
         let mut capture_complete = false;
 
         loop {
+            #[cfg(feature = "bench")]
+            let bench_frame_started = vitasdk_sys::sceKernelGetProcessTimeWide();
             let physical = input::read();
             let physical = PadSample {
                 buttons: physical.buttons,
@@ -203,6 +303,8 @@ mod vita {
             strike::drain_host(|command| host_command = Some(command));
             runtime.tick();
 
+            #[cfg(feature = "bench")]
+            let bench_render_started = vitasdk_sys::sceKernelGetProcessTimeWide();
             graphics::begin_frame(0xff00_0000);
             frame_pool.reset();
             let camera = match &game {
@@ -223,39 +325,96 @@ mod vita {
             if let Some(current) = &mut game {
                 current.world.draw(&mut frame_pool, &camera);
                 present_data::draw_bots(&mut frame_pool, &bot_body, &current.sim.bots);
-                present_data::draw_effects(&mut frame_pool, &current.sim, camera.forward());
+                present_data::draw_effects(
+                    &mut frame_pool,
+                    &mut effect_geometry,
+                    &current.sim,
+                    camera.forward(),
+                );
                 present_data::draw_viewmodel(&mut frame_pool, &rifle, &current.sim);
             }
             pocket3d_vita::end_3d();
             runtime.render_over();
             graphics::present();
 
+            #[cfg(feature = "bench")]
+            if let Some(sample) = bench_window.record(
+                bench_frame_started,
+                bench_render_started,
+                vitasdk_sys::sceKernelGetProcessTimeWide(),
+            ) {
+                let (faces, triangles, world_draws) = game
+                    .as_ref()
+                    .map(|current| {
+                        (
+                            current.world.last_faces,
+                            current.world.last_tris,
+                            current.world.last_direct_draw_calls,
+                        )
+                    })
+                    .unwrap_or((0, 0, 0));
+                let fps_x100 = sample.frames.saturating_mul(100_000_000) / sample.elapsed_us;
+                vita_log(format_args!(
+                    "[OpenStrike Vita] bench frames={} fps={}.{:02} avg_frame_us={} max_frame_us={} avg_cpu_us={} max_cpu_us={} avg_render_sync_us={} max_render_sync_us={} faces={} world_tris={} world_direct_draw_calls={} submitted_tris={} draw_calls={} dropped_tris={} submission_errors={}",
+                    sample.frames,
+                    fps_x100 / 100,
+                    fps_x100 % 100,
+                    sample.avg_frame_us,
+                    sample.max_frame_us,
+                    sample.avg_cpu_us,
+                    sample.max_cpu_us,
+                    sample.avg_render_sync_us,
+                    sample.max_render_sync_us,
+                    faces,
+                    triangles,
+                    world_draws,
+                    frame_pool.last.triangles,
+                    frame_pool.last.draw_calls,
+                    frame_pool.last.dropped_triangles,
+                    frame_pool.last.submission_errors,
+                ));
+            }
+
             #[cfg(feature = "capture")]
             if !capture_complete && frame >= cap_start && frame < cap_start.saturating_add(cap_n) {
                 let index = frame - cap_start;
-                let (faces, triangles) = game
+                let (
+                    faces,
+                    triangles,
+                    gpu_draw_calls,
+                    geometry_resident,
+                    geometry_error,
+                    texture_error,
+                ) = game
                     .as_ref()
-                    .map(|current| (current.world.last_faces, current.world.last_tris))
-                    .unwrap_or((0, 0));
-                dump_capture(&mut runtime, index, faces, triangles, &frame_pool, &camera)
-                    .unwrap_or_else(|error| fail(&error));
+                    .map(|current| {
+                        (
+                            current.world.last_faces,
+                            current.world.last_tris,
+                            current.world.last_direct_draw_calls,
+                            current.world.gpu_geometry_resident(),
+                            current.world.geometry_error(),
+                            current.world.last_texture_error,
+                        )
+                    })
+                    .unwrap_or((0, 0, 0, false, None, None));
+                dump_capture(
+                    &mut runtime,
+                    index,
+                    faces,
+                    triangles,
+                    gpu_draw_calls,
+                    geometry_resident,
+                    geometry_error,
+                    texture_error,
+                    &frame_pool,
+                    &camera,
+                )
+                .unwrap_or_else(|error| fail(&error));
                 if index + 1 == cap_n {
                     let _ = std::fs::write(format!("{CAPTURE_ROOT}/done"), b"ok\n");
                     capture_complete = true;
                 }
-            }
-
-            #[cfg(feature = "bench")]
-            if frame > 0 && frame % 300 == 0 {
-                let (faces, triangles) = game
-                    .as_ref()
-                    .map(|current| (current.world.last_faces, current.world.last_tris))
-                    .unwrap_or((0, 0));
-                vita_log(format_args!(
-                    "[OpenStrike Vita] frame={frame} faces={faces} world_tris={triangles} submitted_tris={} draw_calls={}",
-                    frame_pool.last.triangles,
-                    frame_pool.last.draw_calls,
-                ));
             }
 
             // Host intents are applied outside every renderer/map borrow. A

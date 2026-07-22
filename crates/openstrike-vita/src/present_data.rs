@@ -11,7 +11,9 @@ use glam::Vec3;
 use openstrike_core::weapon::{rifle_boxes, FxBeam, FxSprite, GUN_COLORS};
 use openstrike_core::StrikeSim;
 #[cfg(target_os = "vita")]
-use pocket3d_vita::mesh::{clear_depth_for_viewmodel, draw_color_tris, ColorVert};
+use pocket3d_vita::mesh::{
+    clear_depth_for_viewmodel, draw_additive_tris, draw_color_tris, ColorVert,
+};
 #[cfg(target_os = "vita")]
 use pocket3d_vita::FramePool;
 
@@ -31,6 +33,8 @@ pub struct ColorVertex {
 #[derive(Default)]
 pub struct EffectGeometry {
     pub vertices: Vec<ColorVertex>,
+    sprites: Vec<FxSprite>,
+    beams: Vec<FxBeam>,
 }
 
 fn abgr(rgba: [u8; 4], brightness: f32) -> u32 {
@@ -38,8 +42,8 @@ fn abgr(rgba: [u8; 4], brightness: f32) -> u32 {
     0xff00_0000 | (channel(rgba[2]) << 16) | (channel(rgba[1]) << 8) | channel(rgba[0])
 }
 
-fn abgr_f(color: [f32; 4], scale: f32) -> u32 {
-    let channel = |value: f32| ((value * scale).clamp(0.0, 1.0) * 255.0) as u32;
+fn abgr_f(color: [f32; 4]) -> u32 {
+    let channel = |value: f32| (value.clamp(0.0, 1.0) * 255.0) as u32;
     (channel(color[3]) << 24)
         | (channel(color[2]) << 16)
         | (channel(color[1]) << 8)
@@ -196,36 +200,44 @@ pub fn build_bot_body() -> Vec<ColorVertex> {
 
 /// Build camera-facing quads for the current muzzle/tracer/impact effects.
 pub fn build_effects(sim: &StrikeSim, camera_forward: Vec3) -> EffectGeometry {
-    let mut sprites: Vec<FxSprite> = Vec::new();
-    let mut beams: Vec<FxBeam> = Vec::new();
-    sim.effects.emit(&mut sprites, &mut beams);
-    let mut vertices = Vec::with_capacity((sprites.len() + beams.len()) * 6);
+    let mut geometry = EffectGeometry::default();
+    build_effects_into(&mut geometry, sim, camera_forward);
+    geometry
+}
+
+/// Like [`build_effects`], reusing the buffers retained in `out`.
+pub fn build_effects_into(out: &mut EffectGeometry, sim: &StrikeSim, camera_forward: Vec3) {
+    out.sprites.clear();
+    out.beams.clear();
+    sim.effects.emit(&mut out.sprites, &mut out.beams);
+    let vertices = &mut out.vertices;
+    vertices.clear();
+    vertices.reserve((out.sprites.len() + out.beams.len()) * 6);
 
     let right = camera_forward.cross(Vec3::Y).normalize_or_zero();
     let up = right.cross(camera_forward);
-    for sprite in sprites {
+    for sprite in &out.sprites {
         let radius_right = right * (sprite.size * 0.5);
         let radius_up = up * (sprite.size * 0.5);
         add_quad(
-            &mut vertices,
+            vertices,
             [
                 sprite.pos - radius_right - radius_up,
                 sprite.pos + radius_right - radius_up,
                 sprite.pos + radius_right + radius_up,
                 sprite.pos - radius_right + radius_up,
             ],
-            abgr_f(sprite.color, sprite.color[3]),
+            abgr_f(sprite.color),
         );
     }
-    for beam in beams {
+    for beam in &out.beams {
         let side = (beam.b - beam.a).cross(camera_forward).normalize_or_zero() * (beam.width * 0.5);
         add_quad(
-            &mut vertices,
+            vertices,
             [beam.a - side, beam.b - side, beam.b + side, beam.a + side],
-            abgr_f(beam.color, beam.color[3]),
+            abgr_f(beam.color),
         );
     }
-    EffectGeometry { vertices }
 }
 
 /// Queue every actor body using the shared simulation transform.
@@ -248,9 +260,14 @@ pub unsafe fn draw_bots(pool: &mut FramePool, body: &[ColorVertex], bots: &[open
 /// A `pocket3d_vita` pass must be active and `pool` must remain stable until
 /// `pocket3d_vita::end_3d` flushes it.
 #[cfg(target_os = "vita")]
-pub unsafe fn draw_effects(pool: &mut FramePool, sim: &StrikeSim, camera_forward: Vec3) {
-    let effects = build_effects(sim, camera_forward);
-    unsafe { draw_color_tris(pool, &effects.vertices, Mat4::IDENTITY) };
+pub unsafe fn draw_effects(
+    pool: &mut FramePool,
+    geometry: &mut EffectGeometry,
+    sim: &StrikeSim,
+    camera_forward: Vec3,
+) {
+    build_effects_into(geometry, sim, camera_forward);
+    unsafe { draw_additive_tris(pool, &geometry.vertices, Mat4::IDENTITY) };
 }
 
 /// Queue the first-person rifle on a later painter layer so walls cannot
@@ -282,5 +299,66 @@ mod tests {
         assert!(!rifle.is_empty());
         assert_eq!(rifle.len() % 3, 0);
         assert_eq!(bot.len(), 7 * 6 * 6);
+    }
+
+    #[test]
+    fn effect_colors_keep_straight_alpha() {
+        assert_eq!(abgr_f([1.0, 0.5, 0.25, 0.5]), 0x7f3f_7fff);
+    }
+
+    #[test]
+    fn effect_scratch_buffers_are_reused_and_cleared() {
+        let mut sim = StrikeSim::new(Vec3::ZERO, 0.0, Vec::new(), 0);
+        sim.effects.spawn(
+            openstrike_core::weapon::EffectKind::MuzzleFlash { pos: Vec3::ZERO },
+            1.0,
+        );
+        sim.effects.spawn(
+            openstrike_core::weapon::EffectKind::Tracer {
+                a: Vec3::ZERO,
+                b: Vec3::NEG_Z,
+            },
+            1.0,
+        );
+        let mut geometry = EffectGeometry::default();
+        build_effects_into(&mut geometry, &sim, Vec3::NEG_Z);
+        assert_eq!(geometry.vertices.len(), 12);
+        assert_eq!(geometry.sprites.len(), 1);
+        assert_eq!(geometry.beams.len(), 1);
+        let pointers = (
+            geometry.vertices.as_ptr(),
+            geometry.sprites.as_ptr(),
+            geometry.beams.as_ptr(),
+        );
+        let capacities = (
+            geometry.vertices.capacity(),
+            geometry.sprites.capacity(),
+            geometry.beams.capacity(),
+        );
+
+        build_effects_into(&mut geometry, &sim, Vec3::NEG_Z);
+        assert_eq!(
+            pointers,
+            (
+                geometry.vertices.as_ptr(),
+                geometry.sprites.as_ptr(),
+                geometry.beams.as_ptr(),
+            )
+        );
+        assert_eq!(
+            capacities,
+            (
+                geometry.vertices.capacity(),
+                geometry.sprites.capacity(),
+                geometry.beams.capacity(),
+            )
+        );
+
+        sim.effects.clear();
+        build_effects_into(&mut geometry, &sim, Vec3::NEG_Z);
+        assert!(geometry.vertices.is_empty());
+        assert!(geometry.sprites.is_empty());
+        assert!(geometry.beams.is_empty());
+        assert_eq!(geometry.vertices.capacity(), capacities.0);
     }
 }
