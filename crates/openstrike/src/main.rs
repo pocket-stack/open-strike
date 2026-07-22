@@ -67,6 +67,7 @@ fn main() -> Result<()> {
             size: WINDOW_SIZE,
             tick_hz: 64.0,
             capture_mouse: true,
+            ..AppConfig::default()
         },
         Windowed { game, strike, guest_error: None },
     )
