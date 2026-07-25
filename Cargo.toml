@@ -14,11 +14,11 @@ repository = "https://github.com/pocket-stack/open-strike"
 [workspace.dependencies]
 # The engine family is vendored as a git submodule (vendor/pocketjs) so the
 # Rust crates and the JS framework/build pipeline stay pinned to ONE commit.
-pocket3d = { path = "vendor/pocketjs/pocket3d/crates/pocket3d" }
-pocket3d-bsp = { path = "vendor/pocketjs/pocket3d/crates/pocket3d-bsp" }
-pocket-mod = { path = "vendor/pocketjs/pocket3d/crates/pocket-mod" }
-pocket-ui-wgpu = { path = "vendor/pocketjs/pocket3d/crates/pocket-ui-wgpu" }
-pocketjs-core = { path = "vendor/pocketjs/core", features = ["std"] }
+pocket3d = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d" }
+pocket3d-bsp = { path = "vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }
+pocket-mod = { path = "vendor/pocketjs/engine/crates/pocket-mod" }
+pocket-ui-wgpu = { path = "vendor/pocketjs/engine/crates/pocket-ui-wgpu" }
+pocketjs-core = { path = "vendor/pocketjs/engine/core", features = ["std"] }
 
 wgpu = "25"
 glam = "0.33"

@@ -15,7 +15,10 @@
 </p>
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
-The same game targets desktop (wgpu), PSP (sceGu), and PS Vita (vita2d/GXM); the bottom shot is the real PSP running at a locked 60 fps.</em></p>
+The full 3D game targets desktop (wgpu), PSP (sceGu), and PS Vita
+(vita2d/GXM); Nokia E7 has a separately labelled playable 2D compatibility
+mode while a Pocket3D Symbian backend is still absent. The bottom shot is the
+real PSP running at a locked 60 fps.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -42,7 +45,8 @@ game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
   ├─ rules.ts            the base game as the FIRST MOD: round flow, scoring,
   │                      weapon + bot tuning
-  └─ hud.tsx             the HUD — a full PocketJS app (Solid + Tailwind)
+  ├─ hud.tsx             the HUD — a full PocketJS app (Solid + Tailwind)
+  └─ symbian-compat*     explicitly reduced E7 top-down sim + renderer
 
 vendor/pocketjs          the engine, pinned as a git submodule
 ```
@@ -77,11 +81,14 @@ toolchains. The vendored PocketJS manifest pins the organization-owned
 personal-fork checkout is required.
 
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
-requires the draw list, baked glyphs, buttons and the left analog API at a
-480x272 logical `integer-fit` viewport; it does not claim touch, dynamic text,
-or a stock Pocket3D capability. Pocket3D remains an extension implemented by
-OpenStrike's custom native hosts. Every target build validates that manifest,
-runs the ordinary reachable TypeScript check, writes
+requires baked glyphs and buttons, and uses the left analog API when the
+target provides it. PSP/Vita select its 480x272 fixed `integer-fit` viewport;
+the derived Nokia E7 manifest alone adds `display.viewport.live` and a
+640x360-through-360x640 dynamic viewport. The compatibility app does not
+claim touch, dynamic text, or a stock Pocket3D capability. Pocket3D remains
+an extension implemented by OpenStrike's custom native hosts. Every target
+build validates its manifest, runs the ordinary reachable TypeScript check,
+writes
 `.pocket/<target>/plan.json`, and delegates compilation to `pocket compile`.
 The public `@pocketjs/framework/manifest` helpers verify the build-plan
 checksum, project stable `HostBuildInputs`, and generate Cargo's target, host
@@ -89,6 +96,55 @@ ABI and viewport environment. Target artifacts are isolated under
 `dist/pocket/<target>` so concurrent PSP/Vita builds cannot overwrite one
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
+
+## Nokia E7: playable 2D compatibility mode
+
+The generic PocketJS Symbian host has a 2D UI renderer, but it does not yet
+provide OpenStrike's native `strike` surface, BSP loader, collision world, or
+a Pocket3D OpenGL ES renderer. OpenStrike therefore ships an intentionally
+named **E7 2D COMPAT / NO 3D** mode instead of presenting a static mock or
+mislabeling it as the full FPS.
+
+This fallback is entirely inside this repository. The build mechanically
+derives an E7 manifest from canonical `pocket.json` and selects the dedicated
+`game/openstrike-symbian.tsx` entry; there is no second hand-maintained
+contract. On `symbian-e7-dev`—and only when a future native `strike` surface
+is absent—that entry installs a deterministic top-down simulation. The
+ordinary map menu starts a round; the existing `game/rules.ts` still owns
+phase timing, wins, losses and round resets; the existing HUD consumes real
+state snapshots and hit/damage events. Player movement, aiming, automatic
+fire, reloading, pursuing/attacking bots, death and elimination are live
+gameplay. PSP, Vita and desktop continue to build the canonical entry and use
+their native simulation and 3D renderers unchanged.
+
+E7 keyboard controls:
+
+| Key | Action |
+| --- | --- |
+| Arrow up/down | move forward/back |
+| Arrow left/right | turn |
+| E | fire |
+| S | reload |
+| Enter | choose a map / confirm |
+| Backspace or Home | open the return-to-menu dialog |
+
+The pure compatibility simulation is covered by
+`bun run test:symbian-compat`. The pinned `vendor/pocketjs` revision contains
+the Symbian toolchain; `POCKETJS_ROOT` remains available only for testing a
+newer PocketJS checkout. The guest-only command compiles the dedicated bundle
+and automatically exercises the actual HostOps/frame protocol from menu
+selection through a combat hit:
+
+```sh
+bun run test:symbian-bundle
+bun run build:symbian
+```
+
+The full build writes
+`dist/symbian/openstrike-e7-compat.sis`, with a stable private UID derived
+from `dev.pocket-stack.openstrike.e7-compat`, and reruns the same smoke against
+the packaged payload. That harness proves guest startup and gameplay wiring;
+it is not a substitute for installing and accepting the final SIS on an E7.
 
 ### Map data
 

@@ -21,7 +21,7 @@ export function pocketOutputDirectory(target: string): string {
 
 function frameworkRoot(): string {
   const root = resolve(`${repo}/vendor/pocketjs`);
-  if (!existsSync(`${root}/scripts/pocket.ts`)) {
+  if (!existsSync(`${root}/tools/pocket.ts`)) {
     throw new Error(
       `PocketJS platform-contract toolchain not found at ${root}; initialize or update vendor/pocketjs`,
     );
@@ -36,7 +36,7 @@ export async function compilePocketTarget(target: string): Promise<HostBuildInpu
   const planPath = `${repo}/.pocket/${target}/plan.json`;
   const outdir = pocketOutputDirectory(target);
 
-  await $`bun ${framework}/scripts/pocket.ts compile --target ${target} --manifest ${manifest} --project-root ${repo} --outdir ${outdir}`.cwd(
+  await $`bun ${framework}/tools/pocket.ts compile --target ${target} --manifest ${manifest} --project-root ${repo} --outdir ${outdir}`.cwd(
     repo,
   );
 

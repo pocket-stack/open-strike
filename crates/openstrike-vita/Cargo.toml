@@ -17,7 +17,7 @@ path = "src/lib.rs"
 [dependencies]
 openstrike-core = { path = "../openstrike-core" }
 glam = "0.33"
-pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp" }
+pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }
 
 [target.'cfg(target_os = "vita")'.dependencies]
 vitasdk-sys = { version = "0.3.3", features = [
@@ -27,8 +27,8 @@ vitasdk-sys = { version = "0.3.3", features = [
   "SceLibKernel_stub",
 ] }
 vita2d-sys = "0.1.1"
-pocket3d-vita = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-vita" }
-pocketjs-vita = { path = "../../vendor/pocketjs/native-vita" }
+pocket3d-vita = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-vita" }
+pocketjs-vita = { path = "../../vendor/pocketjs/hosts/vita" }
 libquickjs-sys = { git = "https://github.com/pocket-stack/quickjs-rs.git", rev = "0fc946fb670c0c29bc0135f510bcb0f595415a61" }
 
 [features]

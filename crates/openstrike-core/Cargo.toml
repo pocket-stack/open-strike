@@ -19,6 +19,6 @@ std = ["pocket3d-bsp/std", "glam/std"]
 libm = ["pocket3d-bsp/libm", "glam/libm"]
 
 [dependencies]
-pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp", default-features = false }
+pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false }
 glam = { version = "0.33", default-features = false }
 libm = "0.2"

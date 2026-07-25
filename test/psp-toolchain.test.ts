@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PSP_TOOLCHAIN } from "../vendor/pocketjs/scripts/psp-toolchain.ts";
+import { PSP_TOOLCHAIN } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 
 const script = await Bun.file(new URL("../scripts/psp.ts", import.meta.url)).text();
 const packageJson = await Bun.file(new URL("../package.json", import.meta.url)).json();
@@ -12,8 +12,8 @@ const dependencyContract = (
 
 describe("PSP toolchain contract", () => {
   test("delegates bootstrap and builds to PocketJS's pinned authority", () => {
-    expect(packageJson.scripts.bootstrap).toBe("bun vendor/pocketjs/scripts/bootstrap.ts");
-    expect(script).toContain('from "../vendor/pocketjs/scripts/psp-toolchain.ts"');
+    expect(packageJson.scripts.bootstrap).toBe("bun vendor/pocketjs/tools/bootstrap.ts");
+    expect(script).toContain('from "../vendor/pocketjs/tools/psp-toolchain.ts"');
     expect(script).toContain("resolvePspBuildToolchain()");
     expect(script).toContain("...toolchain.environment");
     expect(script).toContain("toolchain.manifest.rust.toolchain");

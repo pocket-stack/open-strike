@@ -11,7 +11,7 @@
 
 import { $ } from "bun";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
-import { resolvePspBuildToolchain } from "../vendor/pocketjs/scripts/psp-toolchain.ts";
+import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
@@ -53,7 +53,7 @@ for (const f of bsps) {
   if (existsSync(p3d) && statSync(p3d).mtimeMs > statSync(src).mtimeMs) continue;
   console.log(`openstrike-psp: cooking ${stem}`);
   await $`cargo run --release -q -p pocket3d-cook -- ${src} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
-    `${repo}vendor/pocketjs/pocket3d`,
+    `${repo}vendor/pocketjs/engine/pocket3d`,
   );
 }
 
@@ -83,7 +83,7 @@ const env = {
     `-fno-stack-protector -I${sdk}/psp/include -I${sdk}/psp/sdk/include`,
   AR_mipsel_sony_psp: `${llvm}/llvm-ar`,
   RANLIB_mipsel_sony_psp: `${llvm}/llvm-ranlib`,
-  RUST_PSP_TARGET: `${repo}vendor/pocketjs/native/targets/mipsel-sony-psp.json`,
+  RUST_PSP_TARGET: `${repo}vendor/pocketjs/hosts/psp/targets/mipsel-sony-psp.json`,
   RUST_PSP_ABORT_ONLY: "1",
   CARGO_PROFILE_DEV_OPT_LEVEL: process.env.CARGO_PROFILE_DEV_OPT_LEVEL ?? "3",
   // e2e/bench builds skip the menu and boot straight into --map; interactive

@@ -23,7 +23,7 @@ import {
   DEFAULT_VITA_PACKAGE_ASSETS,
   VITA_REQUIRED_SYSTEM_ASSETS,
   VITA_SYSTEM_ASSET_PATHS,
-} from "../vendor/pocketjs/scripts/vita-package.ts";
+} from "../vendor/pocketjs/tools/vita-package.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";

@@ -10,8 +10,12 @@
     "allowImportingTsExtensions": true,
     "types": ["bun-types"],
     "paths": {
-      "@pocketjs/framework": ["./vendor/pocketjs/src/index.ts"],
-      "@pocketjs/framework/*": ["./vendor/pocketjs/src/*"]
+      "@pocketjs/framework": ["./vendor/pocketjs/framework/src/index.ts"],
+      "@pocketjs/framework/solid": ["./vendor/pocketjs/framework/src/index.ts"],
+      "@pocketjs/framework/input": ["./vendor/pocketjs/framework/src/input-api.ts"],
+      "@pocketjs/framework/manifest": ["./vendor/pocketjs/framework/src/manifest/index.ts"],
+      "@pocketjs/framework/*": ["./vendor/pocketjs/framework/src/*"],
+      "tools/*": ["./vendor/pocketjs/tools/*"]
     }
   },
   "include": ["game", "scripts"]

@@ -17,7 +17,7 @@ import {
   statSync,
 } from "node:fs";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
-import { packageVitaVpk } from "../vendor/pocketjs/scripts/vita-package.ts";
+import { packageVitaVpk } from "../vendor/pocketjs/tools/vita-package.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -72,7 +72,7 @@ for (const file of bsps) {
   if (existsSync(cooked) && statSync(cooked).mtimeMs > statSync(source).mtimeMs) continue;
   console.log(`openstrike-vita: cooking ${stem}`);
   await $`cargo run --release -q -p pocket3d-cook -- ${source} --wads ${mapsRoot}/support --subdivide 32 -o ${cooked} --verify`.cwd(
-    `${repo}vendor/pocketjs/pocket3d`,
+    `${repo}vendor/pocketjs/engine/pocket3d`,
   );
 }
 

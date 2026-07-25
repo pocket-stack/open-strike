@@ -21,10 +21,10 @@ edition = "2021"
 [dependencies]
 psp = { git = "https://github.com/pocket-stack/rust-psp.git", rev = "2cbaf8c9bc72569c76240a1d9743de10731e5f6b", features = ["external-c-heap", "abort-only", "external-global-alloc"] }
 libquickjs-sys = { git = "https://github.com/pocket-stack/quickjs-rs.git", rev = "0fc946fb670c0c29bc0135f510bcb0f595415a61" }
-pocketjs-psp = { path = "../../vendor/pocketjs/native" }
-pocketjs-core = { path = "../../vendor/pocketjs/core" }
-pocket3d-bsp = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
-pocket3d-gu = { path = "../../vendor/pocketjs/pocket3d/crates/pocket3d-gu" }
+pocketjs-psp = { path = "../../vendor/pocketjs/hosts/psp" }
+pocketjs-core = { path = "../../vendor/pocketjs/engine/core" }
+pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gu = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gu" }
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
 glam = { version = "0.33", default-features = false, features = ["libm"] }
 libm = "0.2"

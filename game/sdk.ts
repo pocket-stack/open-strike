@@ -45,9 +45,11 @@ export interface BotsConfig {
   damageMax: number;
 }
 
-interface NativeStrike {
+export interface NativeStrike {
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
+  /** Compatibility hosts may publish their pre-first-frame state. */
+  __initialState?: StrikeState;
   loadMap?(index: number): void;
   toMenu?(): void;
   setPhase(phase: string): void;
@@ -65,21 +67,23 @@ if (!native) {
   throw new Error("openstrike: no `strike` surface — is this running under the game host?");
 }
 
-let current: StrikeState = {
-  time: 0,
-  phase: "starting",
-  hp: 100,
-  alive: true,
-  ammo: 30,
-  reserve: 90,
-  reloading: false,
-  reloadFrac: 0,
-  aliveBots: 0,
-  totalBots: 0,
-  wins: 0,
-  losses: 0,
-  speed: 0,
-};
+let current: StrikeState = native.__initialState
+  ? { ...native.__initialState }
+  : {
+      time: 0,
+      phase: "starting",
+      hp: 100,
+      alive: true,
+      ammo: 30,
+      reserve: 90,
+      reloading: false,
+      reloadFrac: 0,
+      aliveBots: 0,
+      totalBots: 0,
+      wins: 0,
+      losses: 0,
+      speed: 0,
+    };
 
 type Handler = (e: StrikeEvent) => void;
 type TickHandler = (s: StrikeState) => void;
