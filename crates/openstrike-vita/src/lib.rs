@@ -4,7 +4,6 @@
 
 #![cfg_attr(target_os = "vita", allow(static_mut_refs))]
 
-#[cfg(target_os = "vita")]
 extern crate alloc;
 
 // The raw strike surface is intentionally source-shared with PSP: both hosts

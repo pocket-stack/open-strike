@@ -18,6 +18,8 @@ crates/openstrike-psp/target/
 # Vita VPK crate and staged copyrighted map data.
 crates/openstrike-vita/target/
 crates/openstrike-vita/static/maps/
+# Symbian app-specific static core (standalone nightly build-std crate).
+crates/openstrike-symbian/target/
 # script/e2e outputs
 /out/
 /pocketjs-dbg/

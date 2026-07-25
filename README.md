@@ -15,10 +15,9 @@
 </p>
 
 <p align="center"><em>A CS-like FPS on classic BSP maps — Pocket3D worlds, a PocketJS JSX HUD, gameplay in TypeScript.<br/>
-The full 3D game targets desktop (wgpu), PSP (sceGu), and PS Vita
-(vita2d/GXM); Nokia E7 has a separately labelled playable 2D compatibility
-mode while a Pocket3D Symbian backend is still absent. The bottom shot is the
-real PSP running at a locked 60 fps.</em></p>
+The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
+(vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot is the real PSP
+running at a locked 60 fps.</em></p>
 
 A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
@@ -40,13 +39,15 @@ crates/openstrike-psp    the PSP build: an EBOOT on pocket3d-gu (sceGu) and
                          the PocketJS PSP host — same surfaces, same bundle
 crates/openstrike-vita   the PS Vita build: a native 960×544 VPK on
                          pocket3d-vita + PocketJS's vita2d/GXM host
+crates/openstrike-symbian
+                         the E7 app core: the shared simulation + Pocket3D
+                         GLES2, statically linked into PocketJS's Qt host
 
 game/                    the product bundle (JS/TSX) — runs on every target
   ├─ sdk.ts              `strike` SDK: state snapshots, events, commands
   ├─ rules.ts            the base game as the FIRST MOD: round flow, scoring,
   │                      weapon + bot tuning
-  ├─ hud.tsx             the HUD — a full PocketJS app (Solid + Tailwind)
-  └─ symbian-compat*     explicitly reduced E7 top-down sim + renderer
+  └─ hud.tsx             the HUD — a full PocketJS app (Solid + Tailwind)
 
 vendor/pocketjs          the engine, pinned as a git submodule
 ```
@@ -83,12 +84,11 @@ personal-fork checkout is required.
 [`pocket.json`](pocket.json) is the portable Pocket application contract. It
 requires baked glyphs and buttons, and uses the left analog API when the
 target provides it. PSP/Vita select its 480x272 fixed `integer-fit` viewport;
-the derived Nokia E7 manifest alone adds `display.viewport.live` and a
-640x360-through-360x640 dynamic viewport. The compatibility app does not
-claim touch, dynamic text, or a stock Pocket3D capability. Pocket3D remains
-an extension implemented by OpenStrike's custom native hosts. Every target
-build validates its manifest, runs the ordinary reachable TypeScript check,
-writes
+the Nokia E7 selects the same manifest's `display.viewport.live` enhancement
+and 640x360-through-360x640 dynamic viewport. Pocket3D remains an extension
+implemented by OpenStrike's custom native hosts rather than a private
+manifest channel. Every target build validates its manifest, runs the
+ordinary reachable TypeScript check, writes
 `.pocket/<target>/plan.json`, and delegates compilation to `pocket compile`.
 The public `@pocketjs/framework/manifest` helpers verify the build-plan
 checksum, project stable `HostBuildInputs`, and generate Cargo's target, host
@@ -97,54 +97,68 @@ ABI and viewport environment. Target artifacts are isolated under
 another. At runtime PocketJS compares target and host ABI; the plan checksum
 is build-time consistency data, not a runtime trust mechanism.
 
-## Nokia E7: playable 2D compatibility mode
+## Nokia E7: full 3D OpenStrike
 
-The generic PocketJS Symbian host has a 2D UI renderer, but it does not yet
-provide OpenStrike's native `strike` surface, BSP loader, collision world, or
-a Pocket3D OpenGL ES renderer. OpenStrike therefore ships an intentionally
-named **E7 2D COMPAT / NO 3D** mode instead of presenting a static mock or
-mislabeling it as the full FPS.
+The E7 build is the real FPS, not the former top-down substitute. Its
+application-specific static core source-shares `openstrike-core`, installs the
+native `strike` surface before the canonical `game/openstrike.tsx` bundle is
+evaluated, reads the cooked Dust2 BSP directly from the PocketJS PAK, and
+renders it through Pocket3D's OpenGL ES 2 backend. The depth-tested world,
+bots, weapon viewmodel, muzzle effects, collision, round logic, and PocketJS
+JSX HUD all run in the same app.
 
-This fallback is entirely inside this repository. The build mechanically
-derives an E7 manifest from canonical `pocket.json` and selects the dedicated
-`game/openstrike-symbian.tsx` entry; there is no second hand-maintained
-contract. On `symbian-e7-dev`—and only when a future native `strike` surface
-is absent—that entry installs a deterministic top-down simulation. The
-ordinary map menu starts a round; the existing `game/rules.ts` still owns
-phase timing, wins, losses and round resets; the existing HUD consumes real
-state snapshots and hit/damage events. Player movement, aiming, automatic
-fire, reloading, pursuing/attacking bots, death and elimination are live
-gameplay. PSP, Vita and desktop continue to build the canonical entry and use
-their native simulation and 3D renderers unchanged.
+The Qt host owns QuickJS, the GL context, and presentation. The native
+extension renders the 3D scene first; PocketJS composites the retained HUD
+over it. At the E7 host's 30 Hz presentation rate the simulation advances two
+fixed 60 Hz ticks per frame. Rotation updates the camera aspect and live UI
+viewport without rebuilding the simulation, so an active match survives
+landscape/portrait changes.
 
 E7 keyboard controls:
 
 | Key | Action |
 | --- | --- |
-| Arrow up/down | move forward/back |
-| Arrow left/right | turn |
+| W / A / S / D | move |
+| Arrow keys | look |
 | E | fire |
-| S | reload |
-| Enter | choose a map / confirm |
-| Backspace or Home | open the return-to-menu dialog |
+| Space | jump |
+| R | reload |
+| Shift | walk |
+| Backspace or Home | open/close the return-to-menu dialog |
+| Arrow keys + Enter (menus) | select and confirm |
 
-The pure compatibility simulation is covered by
-`bun run test:symbian-compat`. The pinned `vendor/pocketjs` revision contains
-the Symbian toolchain; `POCKETJS_ROOT` remains available only for testing a
-newer PocketJS checkout. The guest-only command compiles the dedicated bundle
-and automatically exercises the actual HostOps/frame protocol from menu
-selection through a combat hit:
+The first E7 package intentionally embeds only `de_dust2`; map and WAD data
+remain user-supplied and are never committed. Touch aiming is not implemented
+yet. The script generates a private Symbian entry and `pak.json` under
+`.pocket/symbian-e7-dev`, so PSP and Vita builds never see or duplicate this
+map. To create or refresh the ignored `dist/maps/de_dust2.p3d`,
+`OPENSTRIKE_MAPS` points to a tree with `maps/de_dust2.bsp` and
+`support/*.wad`; otherwise the local default is
+`~/Downloads/cs-maps-20260705-1836`. An already valid cooked P3D is also a
+complete build input when the copyrighted source tree is not present.
 
 ```sh
-bun run test:symbian-bundle
-bun run build:symbian
+# Hermetic manifest/PAK/tooling tests: no Docker, map data, or device needed.
+bun run test:symbian
+
+# Cook only Dust2, build the real JS/PAK, and verify the embedded P3D byte-for-byte.
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun run test:symbian-bundle
+
+# Build the app-specific pinned-nightly core and the independently installable SIS.
+OPENSTRIKE_MAPS=~/path/to/cs-maps bun run build:symbian
 ```
 
-The full build writes
-`dist/symbian/openstrike-e7-compat.sis`, with a stable private UID derived
-from `dev.pocket-stack.openstrike.e7-compat`, and reruns the same smoke against
-the packaged payload. That harness proves guest startup and gameplay wiring;
-it is not a substitute for installing and accepting the final SIS on an E7.
+The pinned `vendor/pocketjs` checkout is authoritative.
+`POCKETJS_ROOT=/path/to/pocketjs` (or `--pocketjs-root`) is available only for
+guest-only compatibility checks. A native build rejects any checkout other
+than `vendor/pocketjs`, because the Rust dependency graph and Qt packager must
+use the same pinned ABI. The full command uses PocketJS's exact Symbian
+nightly, 30 Hz host rate, custom target JSON, and
+`build-std=core,alloc,compiler_builtins`, then passes the resulting static
+library through the toolchain's explicit `--core-library` boundary. It writes
+`dist/symbian/openstrike.sis`, validates the cooked map through Pocket3D's
+canonical Rust reader, and revalidates the packaged JS/PAK against that exact
+map; installation and visual acceptance still require a real E7.
 
 ### Map data
 

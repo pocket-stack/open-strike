@@ -1,5 +1,5 @@
-// Shared product screen. Native 3D hosts mount this directly; the explicitly
-// reduced Symbian entry places its compatibility world underneath it.
+// Shared product screen. Every native 3D host mounts this same menu/HUD over
+// its target-specific Pocket3D renderer.
 
 import { createSignal, Show } from "solid-js";
 import Hud from "./hud.tsx";

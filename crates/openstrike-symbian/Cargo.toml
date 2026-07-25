@@ -1,0 +1,30 @@
+# openstrike-symbian — the app-specific native core linked into the shared
+# PocketJS Qt/Symbian host. It owns OpenStrike simulation and GLES2
+# presentation while reusing PocketJS's QuickJS, retained UI and packaging.
+
+[package]
+name = "openstrike-symbian"
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
+pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
+pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }
+pocketjs-core = { path = "../../vendor/pocketjs/engine/core", default-features = false }
+pocketjs-symbian-core = { path = "../../vendor/pocketjs/engine/symbian", default-features = false }
+glam = { version = "0.33", default-features = false, features = ["libm", "scalar-math"] }
+libm = "0.2"
+
+[workspace]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+codegen-units = 1
+lto = true

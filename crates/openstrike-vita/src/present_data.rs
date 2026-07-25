@@ -5,6 +5,7 @@
 //! vita2d/vitaGL types makes the eventual Pocket3D Vita adapter a conversion
 //! at one boundary instead of coupling simulation code to the GPU API.
 
+use alloc::vec::Vec;
 #[cfg(target_os = "vita")]
 use glam::Mat4;
 use glam::Vec3;

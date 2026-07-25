@@ -11,7 +11,7 @@
     "build:symbian": "bun scripts/symbian.ts",
     "build:vita": "bun scripts/vita.ts",
     "test:symbian-bundle": "bun scripts/symbian.ts --guest-only",
-    "test:symbian-compat": "bun test test/symbian-compat.test.ts",
+    "test:symbian": "bun test test/symbian-tooling.test.ts",
     "test:vita-package": "bun test test/openstrike-vita-artwork.test.ts",
     "test:e2e:vita": "bun scripts/e2e-vita.ts",
     "test:psp-toolchain": "bun test test/psp-toolchain.test.ts"
