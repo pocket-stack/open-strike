@@ -6,6 +6,7 @@
 import { createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import { pushFocusGrid, pushFocusScope } from "@pocketjs/framework/input";
+import { platform } from "@pocketjs/framework/platform";
 import { strike } from "./sdk.ts";
 
 const INK = "#e8f0f2";
@@ -15,7 +16,13 @@ const AMBER = "#fbbf24";
 
 const vp = (globalThis as { ui?: { __viewport?: { w: number; h: number } } }).ui
   ?.__viewport ?? { w: 480, h: 272 };
-const S = Math.max(1, Math.round(vp.h / 272));
+// Scale only when a complete 480x272 reference frame fits. Height-only
+// scaling made the E7's 360x640 portrait viewport choose 2x and clip the
+// 600px-wide map grid; using both extents keeps every supported E7
+// orientation at the compact scale while preserving exact 1x PSP and 2x
+// Vita proportions when those logical viewports are published.
+const S = Math.max(1, Math.floor(Math.min(vp.w / 480, vp.h / 272)));
+const IS_SYMBIAN_E7 = platform.target === "symbian-e7-dev";
 
 // Selected-row look: a lime-tinted fill + a bright lime border + a small
 // slide-in. The default keeps a transparent 1px border so the focused border
@@ -108,15 +115,38 @@ export default function MainMenu() {
           </For>
         </View>
 
-        {/* Footer hints */}
-        <View class="flex-row gap-3 mt-3">
-          <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-            ↕↔ SELECT
-          </Text>
-          <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-            ○ DEPLOY
-          </Text>
-        </View>
+        {/* Footer hints: retain console glyphs verbatim; E7 names its real keys. */}
+        <Show
+          when={IS_SYMBIAN_E7}
+          fallback={
+            <View class="flex-row gap-3 mt-3">
+              <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+                ↕↔ SELECT
+              </Text>
+              <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+                ○ DEPLOY
+              </Text>
+            </View>
+          }
+        >
+          <View
+            class="flex-col items-center gap-1 mt-3 px-2 py-1 rounded-sm"
+            style={{ bgColor: "#0a121a80" }}
+          >
+            <Text class="text-xs tracking-wide" style={{ textColor: LIME }}>
+              ARROWS SELECT · ENTER DEPLOY
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              WASD MOVE · ARROWS LOOK
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              ENTER/E FIRE · R RELOAD · SPACE JUMP
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              SHIFT WALK · BACKSPACE/HOME MENU
+            </Text>
+          </View>
+        </Show>
       </View>
     </View>
   );

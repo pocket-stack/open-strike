@@ -1,6 +1,7 @@
 //! E7 hardware keyboard to deterministic OpenStrike input.
 
 use openstrike_core::sim::{SimInput, MOUSE_SENS};
+use pocketjs_core::spec::btn;
 use pocketjs_symbian_core::extension::{
     KEY_FIRE, KEY_JUMP, KEY_LOOK_DOWN, KEY_LOOK_LEFT, KEY_LOOK_RIGHT, KEY_LOOK_UP, KEY_MOVE_BACK,
     KEY_MOVE_FORWARD, KEY_MOVE_LEFT, KEY_MOVE_RIGHT, KEY_RELOAD, KEY_WALK,
@@ -28,7 +29,7 @@ impl KeyboardInput {
         }
     }
 
-    pub fn map(&mut self, keys: u32, dt: f32) -> TickInput {
+    pub fn map(&mut self, keys: u32, buttons: u32, dt: f32) -> TickInput {
         let pressed = keys & !self.previous;
         self.previous = keys;
 
@@ -54,7 +55,7 @@ impl KeyboardInput {
                 move_y,
                 walk: keys & KEY_WALK != 0,
                 jump: keys & KEY_JUMP != 0,
-                fire: keys & KEY_FIRE != 0,
+                fire: keys & KEY_FIRE != 0 || buttons & (btn::CIRCLE | btn::RTRIGGER) != 0,
                 reload: pressed & KEY_RELOAD != 0,
             },
             look_dx: yaw * LOOK_YAW_RATE * acceleration * dt / MOUSE_SENS,
@@ -71,8 +72,8 @@ mod tests {
     fn maps_levels_and_reload_edge() {
         let mut input = KeyboardInput::new();
         let keys = KEY_MOVE_FORWARD | KEY_MOVE_LEFT | KEY_FIRE | KEY_RELOAD;
-        let first = input.map(keys, 1.0 / 60.0);
-        let held = input.map(keys, 1.0 / 60.0);
+        let first = input.map(keys, 0, 1.0 / 60.0);
+        let held = input.map(keys, 0, 1.0 / 60.0);
         assert_eq!(first.sim.move_x, -1.0);
         assert_eq!(first.sim.move_y, 1.0);
         assert!(first.sim.fire && held.sim.fire);
@@ -83,11 +84,21 @@ mod tests {
     #[test]
     fn look_signs_match_apply_look() {
         let mut input = KeyboardInput::new();
-        let right_down = input.map(KEY_LOOK_RIGHT | KEY_LOOK_DOWN, 1.0 / 60.0);
+        let right_down = input.map(KEY_LOOK_RIGHT | KEY_LOOK_DOWN, 0, 1.0 / 60.0);
         assert!(right_down.look_dx > 0.0);
         assert!(right_down.look_dy > 0.0);
-        let left_up = input.map(KEY_LOOK_LEFT | KEY_LOOK_UP, 1.0 / 60.0);
+        let left_up = input.map(KEY_LOOK_LEFT | KEY_LOOK_UP, 0, 1.0 / 60.0);
         assert!(left_up.look_dx < 0.0);
         assert!(left_up.look_dy < 0.0);
+    }
+
+    #[test]
+    fn circle_and_right_trigger_are_sustained_fire_inputs() {
+        let mut input = KeyboardInput::new();
+        for button in [btn::CIRCLE, btn::RTRIGGER, btn::CIRCLE | btn::RTRIGGER] {
+            assert!(input.map(0, button, 1.0 / 60.0).sim.fire);
+            assert!(input.map(0, button, 1.0 / 60.0).sim.fire);
+            assert!(!input.map(0, 0, 1.0 / 60.0).sim.fire);
+        }
     }
 }

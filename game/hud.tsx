@@ -23,6 +23,7 @@ import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
 import { pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
+import { platform } from "@pocketjs/framework/platform";
 import { strike, type StrikeState } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
 
@@ -50,7 +51,8 @@ const LIME_N = abgr(LIME);
 // desktop; scale the chrome so it occupies the same screen fraction.
 const vp = (globalThis as { ui?: { __viewport?: { w: number; h: number } } }).ui
   ?.__viewport ?? { w: 480, h: 272 };
-const S = Math.max(1, Math.round(vp.h / 272));
+const S = Math.max(1, Math.floor(Math.min(vp.w / 480, vp.h / 272)));
+const IS_SYMBIAN_E7 = platform.target === "symbian-e7-dev";
 
 const FEED_ROWS = 3;
 const BAR_W = 90;
@@ -465,6 +467,32 @@ export default function Hud() {
         </View>
       </View>
 
+      {/* Static E7 keyboard legend: mounted once, never touched by the hot path. */}
+      <Show when={IS_SYMBIAN_E7}>
+        <View
+          class="absolute items-center"
+          style={{ insetL: 0, insetR: 0, insetB: 12 * S, zIndex: 21 }}
+        >
+          <View
+            class="flex-col items-center gap-1 px-2 py-1 rounded-sm"
+            style={{ bgColor: STRIP }}
+          >
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              WASD MOVE · ARROWS LOOK
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              ENTER/E FIRE · R RELOAD
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              SPACE JUMP · SHIFT WALK
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              BACKSPACE/HOME MENU
+            </Text>
+          </View>
+        </View>
+      </Show>
+
       {/* Quit dialog (SELECT). CS-style: the world keeps running behind it. */}
       <Show when={dialog()}>
         <QuitDialog
@@ -523,9 +551,23 @@ function QuitDialog(props: { onStay: () => void; onQuit: () => void }) {
             </Text>
           </View>
         </View>
-        <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
-          ↔ SELECT · ○ CONFIRM · SELECT CLOSE
-        </Text>
+        <Show
+          when={IS_SYMBIAN_E7}
+          fallback={
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              ↔ SELECT · ○ CONFIRM · SELECT CLOSE
+            </Text>
+          }
+        >
+          <View class="flex-col items-center gap-1">
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              LEFT/RIGHT SELECT · ENTER CONFIRM
+            </Text>
+            <Text class="text-xs tracking-wide" style={{ textColor: DIM }}>
+              BACKSPACE/HOME CLOSE
+            </Text>
+          </View>
+        </Show>
       </View>
     </View>
   );

@@ -102,10 +102,10 @@ is build-time consistency data, not a runtime trust mechanism.
 The E7 build is the real FPS, not the former top-down substitute. Its
 application-specific static core source-shares `openstrike-core`, installs the
 native `strike` surface before the canonical `game/openstrike.tsx` bundle is
-evaluated, reads the cooked Dust2 BSP directly from the PocketJS PAK, and
-renders it through Pocket3D's OpenGL ES 2 backend. The depth-tested world,
-bots, weapon viewmodel, muzzle effects, collision, round logic, and PocketJS
-JSX HUD all run in the same app.
+evaluated, loads the selected cooked map on demand, and renders it through
+Pocket3D's OpenGL ES 2 backend. The depth-tested world, bots, weapon viewmodel,
+muzzle effects, collision, round logic, and PocketJS JSX HUD all run in the
+same app.
 
 The Qt host owns QuickJS, the GL context, and presentation. The native
 extension renders the 3D scene first; PocketJS composites the retained HUD
@@ -119,32 +119,38 @@ E7 keyboard controls:
 | Key | Action |
 | --- | --- |
 | W / A / S / D | move |
-| Arrow keys | look |
-| E | fire |
-| Space | jump |
+| Arrow keys | look during play; select maps and dialog choices in menus |
+| Enter | deploy the selected map or confirm the selected dialog choice |
+| Enter or E | fire (Enter confirms the selected item while a menu is open) |
 | R | reload |
+| Space | jump |
 | Shift | walk |
 | Backspace or Home | open/close the return-to-menu dialog |
-| Arrow keys + Enter (menus) | select and confirm |
 
-The first E7 package intentionally embeds only `de_dust2`; map and WAD data
-remain user-supplied and are never committed. Touch aiming is not implemented
-yet. The script generates a private Symbian entry and `pak.json` under
-`.pocket/symbian-e7-dev`, so PSP and Vita builds never see or duplicate this
-map. To create or refresh the ignored `dist/maps/de_dust2.p3d`,
-`OPENSTRIKE_MAPS` points to a tree with `maps/de_dust2.bsp` and
-`support/*.wad`; otherwise the local default is
-`~/Downloads/cs-maps-20260705-1836`. An already valid cooked P3D is also a
-complete build input when the copyrighted source tree is not present.
+The local E7 build produces one SIS containing the runtime and all eight
+locally supplied cooked maps: `cs_assault`, `cs_office`, `de_aztec`,
+`de_dust`, `de_dust2`, `de_inferno`, `de_nuke`, and `de_train`. Maps are
+installed as separate data files and loaded one at a time, so the 32 MiB
+process heap never holds the complete map set or duplicates it through
+QuickJS. Touch aiming is not implemented yet.
+
+Map and WAD data remain user-supplied. They, the generated P3D files, and the
+resulting map-bearing SIS must not be committed to this repository or
+published as a release artifact. `OPENSTRIKE_MAPS` may point to a source tree
+with `maps/*.bsp` and `support/*.wad`; otherwise the local default is
+`~/Downloads/cs-maps-20260705-1836`. The build cooks and verifies the eight
+maps into ignored `dist/maps/*.p3d`. A complete set of already cooked,
+canonically verified P3D files is also a valid local build input when the
+copyrighted BSP/WAD source tree is unavailable.
 
 ```sh
 # Hermetic manifest/PAK/tooling tests: no Docker, map data, or device needed.
 bun run test:symbian
 
-# Cook only Dust2, build the real JS/PAK, and verify the embedded P3D byte-for-byte.
+# Cook/verify all eight local maps and validate the guest plus map catalogue.
 OPENSTRIKE_MAPS=~/path/to/cs-maps bun run test:symbian-bundle
 
-# Build the app-specific pinned-nightly core and the independently installable SIS.
+# Build the pinned native core and one independently installable, eight-map SIS.
 OPENSTRIKE_MAPS=~/path/to/cs-maps bun run build:symbian
 ```
 

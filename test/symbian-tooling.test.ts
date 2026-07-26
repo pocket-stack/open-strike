@@ -1,19 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   SYMBIAN_GENERATED_ENTRY,
-  SYMBIAN_MAP_KEY,
+  SYMBIAN_MAP_NAMES,
   createSymbianBuildManifest,
   createSymbianBuildPaths,
   parseSymbianCli,
   resolvePocketJsRoot,
+  resolveSymbianPackageUid,
+  stageSymbianMaps,
   symbianCookCommand,
   symbianGeneratedPakManifest,
+  symbianMapFile,
   symbianNativeCommand,
   symbianPackageCommand,
+  symbianRuntimeMapRoot,
   symbianVerifyCookedCommand,
+  validateSymbianDataReceipt,
   validateGuestArtifacts,
   validateNativePocketJsSelection,
   validateSymbianRuntimePin,
@@ -32,6 +43,14 @@ const script = await Bun.file(new URL("../scripts/symbian.ts", import.meta.url))
 const nativeCore = await Bun.file(
   new URL("../crates/openstrike-symbian/src/lib.rs", import.meta.url),
 ).text();
+const nativeInput = await Bun.file(
+  new URL("../crates/openstrike-symbian/src/input.rs", import.meta.url),
+).text();
+const nativeBuild = await Bun.file(
+  new URL("../crates/openstrike-symbian/build.rs", import.meta.url),
+).text();
+const menu = await Bun.file(new URL("../game/menu.tsx", import.meta.url)).text();
+const hud = await Bun.file(new URL("../game/hud.tsx", import.meta.url)).text();
 
 function cookedMap(): Uint8Array {
   const bytes = new Uint8Array(32);
@@ -43,9 +62,9 @@ function cookedMap(): Uint8Array {
 }
 
 describe("OpenStrike Symbian source contract", () => {
-  test("uses the canonical full game with one embedded Dust2 map", () => {
+  test("uses the canonical full game with an external eight-map catalogue", () => {
     expect(validateSymbianSourceContract(manifest)).toEqual({
-      version: "0.2.0",
+      version: "0.3.0",
     });
     expect(manifest.app.entry).toBe("game/openstrike.tsx");
     expect(manifest.app.viewport.dynamic).toEqual({
@@ -57,15 +76,26 @@ describe("OpenStrike Symbian source contract", () => {
     expect((generated.app as { entry: string }).entry).toBe(
       SYMBIAN_GENERATED_ENTRY,
     );
-    expect(symbianGeneratedPakManifest()).toEqual([
-      {
-        key: SYMBIAN_MAP_KEY,
-        file: "../../../dist/maps/de_dust2.p3d",
-      },
+    expect(SYMBIAN_MAP_NAMES).toEqual([
+      "cs_assault",
+      "cs_office",
+      "de_aztec",
+      "de_dust",
+      "de_dust2",
+      "de_inferno",
+      "de_nuke",
+      "de_train",
     ]);
+    expect(symbianGeneratedPakManifest()).toEqual([]);
     expect(nativeCore).toContain(
-      `const MAP_KEY: &str = "${SYMBIAN_MAP_KEY}";`,
+      '#[cfg(not(feature = "embedded-map-catalog"))]\nconst MAP_KEY: &str = "maps/de_dust2.p3d";',
     );
+    expect(nativeCore).toContain("map_buffer: AlignedMapBuffer");
+    expect(nativeBuild).toContain("OPENSTRIKE_SYMBIAN_MAPS");
+    expect(nativeBuild).toContain("OPENSTRIKE_SYMBIAN_DATA_ROOT");
+    expect(nativeInput).toContain("btn::CIRCLE");
+    expect(menu).toContain("WASD");
+    expect(hud).toContain("FIRE");
     expect(script).not.toContain('resolve(repo, "game/pak.json")');
   });
 
@@ -157,8 +187,16 @@ describe("OpenStrike Symbian tooling", () => {
     }
   });
 
-  test("cooks only de_dust2 with the verified 32-unit recipe", () => {
-    expect(symbianCookCommand(paths)).toEqual([
+  test("cooks every catalogue member with the verified 32-unit recipe", () => {
+    expect(symbianMapFile(paths, "de_inferno")).toEqual({
+      name: "de_inferno",
+      source: "/maps/maps/de_inferno.bsp",
+      support: "/maps/support",
+      cooked: "/repo/dist/maps/de_inferno.p3d",
+      staged: "/repo/.pocket/symbian-e7-dev/data/maps/de_inferno.p3d",
+      packagedPath: "maps/de_inferno.p3d",
+    });
+    expect(symbianCookCommand(paths, "de_dust2")).toEqual([
       "cargo",
       "run",
       "--release",
@@ -175,7 +213,7 @@ describe("OpenStrike Symbian tooling", () => {
       "/repo/dist/maps/de_dust2.p3d",
       "--verify",
     ]);
-    expect(symbianVerifyCookedCommand(paths)).toEqual([
+    expect(symbianVerifyCookedCommand(paths, "de_dust2")).toEqual([
       "cargo",
       "run",
       "--release",
@@ -185,6 +223,18 @@ describe("OpenStrike Symbian tooling", () => {
       "--",
       "--verify-cooked",
       "/repo/dist/maps/de_dust2.p3d",
+    ]);
+    expect(
+      SYMBIAN_MAP_NAMES.map((name) => symbianMapFile(paths, name).packagedPath),
+    ).toEqual([
+      "maps/cs_assault.p3d",
+      "maps/cs_office.p3d",
+      "maps/de_aztec.p3d",
+      "maps/de_dust.p3d",
+      "maps/de_dust2.p3d",
+      "maps/de_inferno.p3d",
+      "maps/de_nuke.p3d",
+      "maps/de_train.p3d",
     ]);
   });
 
@@ -213,6 +263,7 @@ describe("OpenStrike Symbian tooling", () => {
       "cargo",
     ]);
     expect(native).toContain("--locked");
+    expect(native).toContain("--features=embedded-map-catalog");
     expect(native).toContain(
       "build-std=core,alloc,compiler_builtins",
     );
@@ -238,28 +289,80 @@ describe("OpenStrike Symbian tooling", () => {
     expect(packaged[packaged.indexOf("--core-library") + 1]).toBe(
       paths.nativeLibrary,
     );
+    expect(
+      packaged[packaged.indexOf("--mass-storage-data-root") + 1],
+    ).toBe(paths.dataRoot);
     expect(packaged.at(-1)).toBe("0xE0000001");
+  });
+
+  test("derives the private mass-memory map root from the package UID", () => {
+    expect(resolveSymbianPackageUid(manifest)).toBe("0xE86B9226");
+    expect(resolveSymbianPackageUid(manifest, "0xE0000001")).toBe(
+      "0xE0000001",
+    );
+    expect(symbianRuntimeMapRoot("0xE86B9226")).toBe(
+      "E:/private/e86b9226/data/maps",
+    );
+  });
+
+  test("stages an exact, stale-free eight-map data root and pins its receipt", () => {
+    const root = mkdtempSync(join(tmpdir(), "openstrike-symbian-maps-"));
+    try {
+      const local = createSymbianBuildPaths(
+        root,
+        join(root, "pocketjs"),
+        join(root, "source"),
+      );
+      mkdirSync(local.cookedMaps, { recursive: true });
+      mkdirSync(join(local.dataRoot, "maps"), { recursive: true });
+      writeFileSync(
+        join(local.dataRoot, "maps/stale.p3d"),
+        new Uint8Array([9, 9, 9]),
+      );
+      for (let index = 0; index < SYMBIAN_MAP_NAMES.length; index++) {
+        writeFileSync(
+          join(local.cookedMaps, `${SYMBIAN_MAP_NAMES[index]}.p3d`),
+          new Uint8Array([index, index + 1, index + 2]),
+        );
+      }
+
+      const receipt = stageSymbianMaps(local);
+      expect(receipt.map((entry) => entry.path)).toEqual(
+        SYMBIAN_MAP_NAMES.map((name) => `maps/${name}.p3d`),
+      );
+      expect(receipt.every((entry) => entry.bytes === 3)).toBe(true);
+      expect(existsSync(join(local.dataRoot, "maps/stale.p3d"))).toBe(false);
+      expect(() =>
+        validateSymbianDataReceipt({ data: receipt }, receipt)
+      ).not.toThrow();
+      expect(() =>
+        validateSymbianDataReceipt({
+          data: receipt.map((entry, index) =>
+            index === 0 ? { ...entry, bytes: 4 } : entry
+          ),
+        }, receipt)
+      ).toThrow("differs from staged maps");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
 describe("OpenStrike Symbian guest validation", () => {
-  test("accepts the real bundle only when its sole map is byte-exact Dust2", () => {
-    const map = cookedMap();
+  test("accepts the real bundle only when map bytes stay out of app.pak", () => {
     const pak = pack([
       { key: "ui:styles", dtype: PAK_DTYPE.u8, data: new Uint8Array([1]) },
-      { key: SYMBIAN_MAP_KEY, dtype: PAK_DTYPE.u8, data: map },
     ]);
     const js = new TextEncoder().encode(
       `const strike = "openstrike";${" ".repeat(1100)}`,
     );
-    expect(() => validateGuestArtifacts(js, unpack(pak), map)).not.toThrow();
+    expect(() => validateGuestArtifacts(js, unpack(pak))).not.toThrow();
     expect(unpack(pak).map((entry) => entry.key)).toEqual([
-      SYMBIAN_MAP_KEY,
       "ui:styles",
     ]);
   });
 
-  test("rejects a renamed or substituted map", () => {
+  test("rejects any accidentally re-embedded map", () => {
     const map = cookedMap();
     const pak = pack([
       {
@@ -271,8 +374,8 @@ describe("OpenStrike Symbian guest validation", () => {
     const js = new TextEncoder().encode(
       `const strike = "openstrike";${" ".repeat(1100)}`,
     );
-    expect(() => validateGuestArtifacts(js, unpack(pak), map)).toThrow(
-      "must contain only maps/de_dust2.p3d",
+    expect(() => validateGuestArtifacts(js, unpack(pak))).toThrow(
+      "must not contain map bytes",
     );
   });
 });

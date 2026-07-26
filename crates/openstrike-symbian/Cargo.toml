@@ -4,12 +4,18 @@
 
 [package]
 name = "openstrike-symbian"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 
 [lib]
 crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+# Embed only the sorted map-name/path catalogue. Cooked map bytes remain
+# app-private files and are loaded into one reusable arena at runtime.
+embedded-map-catalog = []
 
 [dependencies]
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }

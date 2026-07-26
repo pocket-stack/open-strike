@@ -6,6 +6,8 @@ extern crate self as libquickjs_sys;
 extern crate self as pocketjs_psp;
 
 mod input;
+#[cfg(feature = "embedded-map-catalog")]
+mod maps;
 mod quickjs;
 
 pub use quickjs::*;
@@ -25,6 +27,8 @@ use core::ffi::c_void;
 
 use glam::{Mat4, Vec3};
 use input::KeyboardInput;
+#[cfg(feature = "embedded-map-catalog")]
+use maps::{AlignedMapBuffer, MAP_CATALOG};
 use openstrike_core::sim::Command;
 use openstrike_core::StrikeSim;
 use pocket3d_bsp::cooked::{self, CookedMap};
@@ -69,7 +73,9 @@ pub mod ffi {
     }
 }
 
+#[cfg(not(feature = "embedded-map-catalog"))]
 const MAP_KEY: &str = "maps/de_dust2.p3d";
+#[cfg(not(feature = "embedded-map-catalog"))]
 const MAP_NAME: &str = "de_dust2";
 const FIXED_DT: f32 = 1.0 / 60.0;
 const TICKS_PER_HOST_FRAME: usize = 2;
@@ -85,8 +91,14 @@ struct Game {
 struct State {
     context: *mut JSContext,
     global: JSValue,
+    #[cfg(not(feature = "embedded-map-catalog"))]
     map_bytes: &'static [u8],
+    // Keep Game before map_buffer: Rust drops struct fields in declaration
+    // order, so even an ordinary State drop releases every borrowed map view
+    // before freeing the backing allocation.
     game: Option<Game>,
+    #[cfg(feature = "embedded-map-catalog")]
+    map_buffer: AlignedMapBuffer,
     boot_config: Vec<Command>,
     pending_host: Option<strike::HostCmd>,
     input: KeyboardInput,
@@ -137,8 +149,8 @@ unsafe fn drain_commands(state: &mut State) {
     strike::drain_host(|command| state.pending_host = Some(command));
 }
 
-unsafe fn dispatch_tick(state: &mut State, native_keys: u32) -> bool {
-    let tick = state.input.map(native_keys, FIXED_DT);
+unsafe fn dispatch_tick(state: &mut State, native_keys: u32, buttons: u32) -> bool {
+    let tick = state.input.map(native_keys, buttons, FIXED_DT);
     let dispatched = match &mut state.game {
         Some(game) => {
             game.sim.apply_look(tick.look_dx, tick.look_dy);
@@ -159,20 +171,58 @@ unsafe fn dispatch_tick(state: &mut State, native_keys: u32) -> bool {
 
 unsafe fn apply_pending_host(state: &mut State) -> Result<(), ()> {
     match state.pending_host.take() {
-        Some(strike::HostCmd::LoadMap(0)) if state.game.is_none() => {
-            let mut game = game_from_map(state.map_bytes, &state.boot_config).map_err(|_| ())?;
+        Some(strike::HostCmd::LoadMap(index)) if valid_map_index(index) => {
+            shutdown_game(state)?;
+            let mut game = load_game(state, index)?;
             game.world.initialize_gpu().map_err(|_| ())?;
             state.game = Some(game);
         }
         Some(strike::HostCmd::ToMenu) => {
-            if let Some(mut game) = state.game.take() {
-                game.world.shutdown_gpu().map_err(|_| ())?;
-            }
+            shutdown_game(state)?;
             state.menu_time = 0.0;
         }
         _ => {}
     }
     Ok(())
+}
+
+unsafe fn shutdown_game(state: &mut State) -> Result<(), ()> {
+    if let Some(mut game) = state.game.take() {
+        let shutdown = game.world.shutdown_gpu().map_err(|_| ());
+        // Drop every CookedMap/renderer view before load_game is allowed to
+        // resize or overwrite the shared backing allocation.
+        drop(game);
+        shutdown?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "embedded-map-catalog")]
+fn valid_map_index(index: usize) -> bool {
+    index < MAP_CATALOG.len()
+}
+
+#[cfg(not(feature = "embedded-map-catalog"))]
+fn valid_map_index(index: usize) -> bool {
+    index == 0
+}
+
+#[cfg(feature = "embedded-map-catalog")]
+unsafe fn load_game(state: &mut State, index: usize) -> Result<Game, ()> {
+    let entry = MAP_CATALOG.get(index).ok_or(())?;
+    let bytes = state.map_buffer.load(entry).map_err(|_| ())?;
+    // SAFETY: map_buffer belongs to STATE and is released only after Game.
+    // apply_pending_host always drops Game before the next buffer mutation.
+    let bytes: &'static [u8] = core::slice::from_raw_parts(bytes.as_ptr(), bytes.len());
+    game_from_map(bytes, &state.boot_config).map_err(|_| ())
+}
+
+#[cfg(not(feature = "embedded-map-catalog"))]
+unsafe fn load_game(state: &mut State, index: usize) -> Result<Game, ()> {
+    if index != 0 {
+        return Err(());
+    }
+    game_from_map(state.map_bytes, &state.boot_config).map_err(|_| ())
 }
 
 fn camera_for(state: &State) -> Camera3d {
@@ -207,7 +257,7 @@ fn sky_color(camera: &Camera3d) -> [f32; 4] {
 unsafe extern "C" fn boot(
     context: *mut c_void,
     pak: *const u8,
-    pak_len: usize,
+    _pak_len: usize,
     viewport_width: i32,
     viewport_height: i32,
 ) -> i32 {
@@ -218,26 +268,39 @@ unsafe extern "C" fn boot(
     else {
         return 0;
     };
-    let pak = core::slice::from_raw_parts(pak, pak_len);
-    let Some(map) = pocketjs_core::pak::find(pak, MAP_KEY) else {
-        return 0;
+    #[cfg(not(feature = "embedded-map-catalog"))]
+    let map = {
+        let pak = core::slice::from_raw_parts(pak, _pak_len);
+        let Some(map) = pocketjs_core::pak::find(pak, MAP_KEY) else {
+            return 0;
+        };
+        // The extension ABI guarantees that the host-owned PAK outlives boot
+        // and remains immutable until shutdown.
+        core::slice::from_raw_parts(map.as_ptr(), map.len())
     };
-    // The extension ABI guarantees that the host-owned PAK outlives boot and
-    // remains immutable until shutdown. STATE is destroyed before that point.
-    let map: &'static [u8] = core::slice::from_raw_parts(map.as_ptr(), map.len());
     let context = context.cast::<JSContext>();
     let global = JS_GetGlobalObject(context);
 
     // A cold app boot must never inherit intent queued by an earlier guest.
     strike::drain(drop);
     strike::drain_host(drop);
-    strike::register(context, global, &[String::from(MAP_NAME)]);
+    #[cfg(feature = "embedded-map-catalog")]
+    let map_names: Vec<String> = MAP_CATALOG
+        .iter()
+        .map(|entry| String::from(entry.name))
+        .collect();
+    #[cfg(not(feature = "embedded-map-catalog"))]
+    let map_names = [String::from(MAP_NAME)];
+    strike::register(context, global, &map_names);
 
     STATE = Some(State {
         context,
         global,
+        #[cfg(not(feature = "embedded-map-catalog"))]
         map_bytes: map,
         game: None,
+        #[cfg(feature = "embedded-map-catalog")]
+        map_buffer: AlignedMapBuffer::default(),
         boot_config: Vec::new(),
         pending_host: None,
         input: KeyboardInput::new(),
@@ -275,7 +338,7 @@ unsafe extern "C" fn shutdown(gl_context_current: i32) {
 
 unsafe extern "C" fn before_guest(
     context: *mut c_void,
-    _buttons: u32,
+    buttons: u32,
     _analog: u32,
     native_keys: u32,
 ) -> i32 {
@@ -286,7 +349,7 @@ unsafe extern "C" fn before_guest(
         return 0;
     }
     for _ in 0..TICKS_PER_HOST_FRAME {
-        if !dispatch_tick(state, native_keys) {
+        if !dispatch_tick(state, native_keys, buttons) {
             return 0;
         }
     }
