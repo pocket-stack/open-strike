@@ -803,7 +803,7 @@ const HELP = `OpenStrike Nokia E7 3D build
   bun scripts/symbian.ts --guest-only
       verify/cook all eight maps, compile the real JS/PAK, and stage private data
 
-  bun scripts/symbian.ts [--sis-version 0.3.0] [--uid 0xE.......]
+  bun scripts/symbian.ts [--sis-version 0.3.1] [--uid 0xE.......]
       additionally build the pinned Rust GLES2 core and package one all-map SIS
 
   OPENSTRIKE_MAPS accepts <root>/maps + <root>/support or a flat BSP/WAD root,
