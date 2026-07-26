@@ -123,7 +123,8 @@ pub struct SimInput {
     pub jump: bool,
     /// Trigger held.
     pub fire: bool,
-    /// Reload pressed this tick.
+    /// Reload requested this tick; platforms may map either an edge or a held
+    /// level because the weapon gate makes repeated requests idempotent.
     pub reload: bool,
 }
 

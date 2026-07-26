@@ -11,7 +11,6 @@ const LOOK_YAW_RATE: f32 = 2.6;
 const LOOK_PITCH_RATE: f32 = 1.7;
 
 pub struct KeyboardInput {
-    previous: u32,
     look_hold: f32,
 }
 
@@ -24,15 +23,11 @@ pub struct TickInput {
 impl KeyboardInput {
     pub const fn new() -> Self {
         Self {
-            previous: 0,
             look_hold: 0.0,
         }
     }
 
     pub fn map(&mut self, keys: u32, buttons: u32, dt: f32) -> TickInput {
-        let pressed = keys & !self.previous;
-        self.previous = keys;
-
         let move_x = f32::from((keys & KEY_MOVE_RIGHT != 0) as u8)
             - f32::from((keys & KEY_MOVE_LEFT != 0) as u8);
         let move_y = f32::from((keys & KEY_MOVE_FORWARD != 0) as u8)
@@ -56,7 +51,10 @@ impl KeyboardInput {
                 walk: keys & KEY_WALK != 0,
                 jump: keys & KEY_JUMP != 0,
                 fire: keys & KEY_FIRE != 0 || buttons & (btn::CIRCLE | btn::RTRIGGER) != 0,
-                reload: pressed & KEY_RELOAD != 0,
+                // Keep the request alive across both 60 Hz ticks in a 30 Hz
+                // host frame. Weapon::trigger_reload is idempotent while a
+                // reload is active and rejects full/empty-reserve magazines.
+                reload: keys & KEY_RELOAD != 0,
             },
             look_dx: yaw * LOOK_YAW_RATE * acceleration * dt / MOUSE_SENS,
             look_dy: pitch * LOOK_PITCH_RATE * acceleration * dt / MOUSE_SENS,
@@ -69,7 +67,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn maps_levels_and_reload_edge() {
+    fn maps_movement_fire_and_reload_levels() {
         let mut input = KeyboardInput::new();
         let keys = KEY_MOVE_FORWARD | KEY_MOVE_LEFT | KEY_FIRE | KEY_RELOAD;
         let first = input.map(keys, 0, 1.0 / 60.0);
@@ -77,8 +75,7 @@ mod tests {
         assert_eq!(first.sim.move_x, -1.0);
         assert_eq!(first.sim.move_y, 1.0);
         assert!(first.sim.fire && held.sim.fire);
-        assert!(first.sim.reload);
-        assert!(!held.sim.reload);
+        assert!(first.sim.reload && held.sim.reload);
     }
 
     #[test]

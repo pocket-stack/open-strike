@@ -277,3 +277,23 @@ impl Rng {
         lo + self.f32() * (hi - lo)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::Weapon;
+
+    #[test]
+    fn held_reload_request_refills_once_without_spending_extra_reserve() {
+        let mut weapon = Weapon::default();
+        weapon.ammo = 23;
+
+        for _ in 0..360 {
+            weapon.tick(1.0 / 60.0);
+            weapon.trigger_reload();
+        }
+
+        assert_eq!(weapon.ammo, 30);
+        assert_eq!(weapon.reserve, 83);
+        assert!(!weapon.reloading());
+    }
+}

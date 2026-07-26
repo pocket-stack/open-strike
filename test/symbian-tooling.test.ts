@@ -64,7 +64,7 @@ function cookedMap(): Uint8Array {
 describe("OpenStrike Symbian source contract", () => {
   test("uses the canonical full game with an external eight-map catalogue", () => {
     expect(validateSymbianSourceContract(manifest)).toEqual({
-      version: "0.3.1",
+      version: "0.3.2",
     });
     expect(manifest.app.entry).toBe("game/openstrike.tsx");
     expect(manifest.app.viewport.dynamic).toEqual({

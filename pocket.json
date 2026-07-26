@@ -4,7 +4,7 @@
   "id": "dev.pocket-stack.openstrike",
   "name": "open-strike",
   "title": "OpenStrike",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "engine": {
     "capabilities": {
       "requires": [
