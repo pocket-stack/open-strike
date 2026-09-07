@@ -42,7 +42,7 @@ dependencies = [
  "pocket3d-bsp",
  "pocket3d-gles2",
  "pocketjs-core",
- "pocketjs-symbian-core",
+ "pocketjs-ui-cabi",
 ]
 
 [[package]]
@@ -69,7 +69,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pocketjs-symbian-core"
+name = "pocketjs-ui-cabi"
 version = "0.1.0"
 dependencies = [
  "pocketjs-core",

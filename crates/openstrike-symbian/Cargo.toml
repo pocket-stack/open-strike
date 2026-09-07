@@ -22,7 +22,7 @@ openstrike-core = { path = "../openstrike-core", default-features = false, featu
 pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
 pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }
 pocketjs-core = { path = "../../vendor/pocketjs/engine/core", default-features = false }
-pocketjs-symbian-core = { path = "../../vendor/pocketjs/engine/symbian", default-features = false }
+pocketjs-symbian-core = { package = "pocketjs-ui-cabi", path = "../../vendor/pocketjs/engine/ui-cabi", default-features = false }
 glam = { version = "0.33", default-features = false, features = ["libm", "scalar-math"] }
 libm = "0.2"
 

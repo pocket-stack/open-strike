@@ -71,6 +71,13 @@ bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
 bun scripts/build-ui.ts --target vita
 ```
 
+If only previously cooked PSP maps are available, use
+`bun scripts/psp.ts --cooked-maps dist/maps --bench`. The pinned Pocket3D
+reader verifies every supplied `.p3d` before staging that map set beside the
+EBOOT. The default build still cooks from the BSP/WAD source directory.
+`OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
+`bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
+
 PSP builds resolve the normalized SDK in a fixed order: `PSP_SDK`, then
 `PSPDEV`, then Pocket's versioned shared cache at
 `$XDG_CACHE_HOME/pocket-stack/psp/sdk/sdk-noabicalls-normalized-2026-06-19/mipsel-sony-psp`

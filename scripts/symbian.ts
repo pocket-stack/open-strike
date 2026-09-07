@@ -255,7 +255,7 @@ export function createSymbianBuildPaths(
     ),
     targetSpec: resolve(
       pocketjs,
-      "engine/symbian/targets/armv6-symbian-eabi.json",
+      "hosts/nokia-e7/targets/armv6-symbian-eabi.json",
     ),
     pocket3dWorkspace: resolve(pocketjs, "engine/pocket3d"),
     nativeManifest: resolve(
