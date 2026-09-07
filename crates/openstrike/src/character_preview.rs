@@ -40,7 +40,14 @@ pub fn run(args: &Args) -> Result<()> {
             .position(|c| c.name == clip.name())
             .with_context(|| format!("missing {}", clip.name()))?;
         let mut pixels = Vec::new();
-        for (frame, fraction) in [0.0, 0.37, 0.73].into_iter().enumerate() {
+        let fractions: Vec<f32> =
+            if matches!(clip, ActorClip::Walk | ActorClip::Run | ActorClip::Death) {
+                let frames = (openstrike_character::duration(clip) * 24.0).round() as usize;
+                (0..=frames).map(|i| i as f32 / frames as f32).collect()
+            } else {
+                vec![0.0, 0.37, 0.73]
+            };
+        for (frame, fraction) in fractions.into_iter().enumerate() {
             scene.models.clear();
             let mut instance = ModelInstance::new(asset.clone());
             instance.transform = Mat4::from_scale(Vec3::splat(70.0 / asset.height()));
@@ -55,13 +62,13 @@ pub fn run(args: &Args) -> Result<()> {
                 .render(&hl.gpu, &hl.target.view, args.size, &scene, &camera, &hud);
             hl.target.save_png(
                 &hl.gpu,
-                &std::path::Path::new(out).join(format!("{}-{frame}.png", clip.name())),
+                &std::path::Path::new(out).join(format!("{}-{frame:02}.png", clip.name())),
             )?;
             pixels.push(hl.target.read_rgba(&hl.gpu)?);
         }
         let changed = pixels[0]
             .chunks_exact(4)
-            .zip(pixels[1].chunks_exact(4))
+            .zip(pixels[pixels.len() / 2].chunks_exact(4))
             .filter(|(a, b)| a != b)
             .count();
         ensure!(

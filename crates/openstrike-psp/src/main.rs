@@ -324,6 +324,7 @@ unsafe fn run() {
                 Some(g) => (g.world.last_faces, g.world.last_tris),
                 None => (0, 0),
             };
+            bench.observe(mask as u32, &_tick, game.as_ref().map(|g| &g.sim));
             bench.record(
                 frame_count,
                 bench_t0,
@@ -401,6 +402,15 @@ struct Bench {
     frame_times: [u32; 300],
     work_times: [u32; 300],
     late_frames: u32,
+    buttons_or: u32,
+    analog_frames: u32,
+    movement_frames: u32,
+    look_frames: u32,
+    reload_frames: u32,
+    ammo_min: u32,
+    ammo_max: u32,
+    previous_pos: Option<glam::Vec3>,
+    clip_frames: [u32; 7],
 }
 
 #[cfg(feature = "bench")]
@@ -443,6 +453,44 @@ impl Bench {
             frame_times: [0; 300],
             work_times: [0; 300],
             late_frames: 0,
+            buttons_or: 0,
+            analog_frames: 0,
+            movement_frames: 0,
+            look_frames: 0,
+            reload_frames: 0,
+            ammo_min: u32::MAX,
+            ammo_max: 0,
+            previous_pos: None,
+            clip_frames: [0; 7],
+        }
+    }
+
+    fn observe(
+        &mut self,
+        buttons: u32,
+        input: &input::TickInput,
+        sim: Option<&openstrike_core::StrikeSim>,
+    ) {
+        self.buttons_or |= buttons;
+        let moving = input.sim.move_x != 0.0 || input.sim.move_y != 0.0;
+        self.analog_frames += moving as u32;
+        self.look_frames += (input.look_dx != 0.0 || input.look_dy != 0.0) as u32;
+        if let Some(sim) = sim {
+            let pos = sim.player.state.pos;
+            if let Some(previous) = self.previous_pos {
+                let delta = pos.distance_squared(previous);
+                // Exclude round teleports; retain physical analog movement.
+                self.movement_frames += (moving && delta > 0.01 && delta < 100.0) as u32;
+            }
+            self.previous_pos = Some(pos);
+            self.reload_frames += sim.weapon.reloading() as u32;
+            self.ammo_min = self.ammo_min.min(sim.weapon.ammo);
+            self.ammo_max = self.ammo_max.max(sim.weapon.ammo);
+            for bot in &sim.bots {
+                self.clip_frames[bot.animation_sample().0 as usize] += 1;
+            }
+        } else {
+            self.previous_pos = None;
         }
     }
 
@@ -538,7 +586,7 @@ impl Bench {
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{}}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}]}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -570,6 +618,24 @@ impl Bench {
             self.frame_times[296],
             self.work_times[284],
             self.late_frames,
+            self.buttons_or,
+            self.analog_frames,
+            self.movement_frames,
+            self.look_frames,
+            if self.ammo_min == u32::MAX {
+                0
+            } else {
+                self.ammo_min
+            },
+            self.ammo_max,
+            self.reload_frames,
+            self.clip_frames[0],
+            self.clip_frames[1],
+            self.clip_frames[2],
+            self.clip_frames[3],
+            self.clip_frames[4],
+            self.clip_frames[5],
+            self.clip_frames[6],
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -603,6 +669,14 @@ impl Bench {
         self.frame_sum = 0;
         self.frame_samples = 0;
         self.late_frames = 0;
+        self.buttons_or = 0;
+        self.analog_frames = 0;
+        self.movement_frames = 0;
+        self.look_frames = 0;
+        self.reload_frames = 0;
+        self.ammo_min = u32::MAX;
+        self.ammo_max = 0;
+        self.clip_frames = [0; 7];
     }
 }
 

@@ -214,11 +214,14 @@ over.
 
 The current bot is an original Blender patrol officer with Idle, Walk, Run,
 Fire, Reload, Hit and Death actions. Desktop uses its skinned GLB; PSP, Vita
-and E7 share a quantized animation bake. The PSP path uses one indexed draw
-per visible officer (1,390 triangles) and keeps the animation under 512 KiB.
+and E7 share a quantized animation bake. The PSP blends baked frames on the
+GE, with one indexed draw per visible officer (1,390 triangles), under 512 KiB
+of asset data and a shared 1.88 MiB pose cache.
 The [editable source, preview and validation workflow](assets/characters/police/README.md)
 include a map-independent desktop character preview and PSP capture suite.
-Physical PSP performance acceptance for this replacement remains pending.
+The [physical PSP report](docs/PSP_CHARACTER_ACCEPTANCE.md) records two
+1/3/6-actor sweeps and gameplay within an 18 MiB heap cap. Six actors now
+average 58.9 fps; fresh manual feedback on this revision remains pending.
 
 ## Headless verification
 

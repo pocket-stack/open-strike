@@ -1,4 +1,4 @@
-//! GE presentation of the sim: procedural bot bodies, the rifle viewmodel,
+//! GE presentation of the sim: baked officer animation, the rifle viewmodel,
 //! and additive effect billboards. The desktop equivalent is scene
 //! composition in crates/openstrike/src/game.rs — here the "scene" is GE
 //! commands recorded straight into the open display list.
@@ -108,28 +108,51 @@ pub fn build_rifle() -> Vec<ColorVert> {
     out
 }
 
-/// One reusable CPU pose buffer and index list; the GE reads frame-pool copies.
+/// Immutable adjacent pose pairs, shared by all officers. The PSP GE blends
+/// the two quantized frames; CPU cost is independent of the vertex count.
+/// The cache is built/flushed once and remains alive for every in-flight list.
 pub struct OfficerRenderer {
-    vertices: Vec<openstrike_character::Vertex>,
+    pairs: Vec<[openstrike_character::PackedVertex; 2]>,
     indices: Vec<u16>,
     pub visible: u32,
 }
 impl OfficerRenderer {
     pub fn new() -> Self {
+        let frames = openstrike_character::baked_frame_count();
+        let vertices = openstrike_character::vertex_count();
+        let mut pairs = Vec::with_capacity(frames * vertices);
+        for frame in 0..frames {
+            for i in 0..vertices {
+                pairs.push([
+                    openstrike_character::baked_vertex(frame, i),
+                    openstrike_character::baked_vertex((frame + 1).min(frames - 1), i),
+                ]);
+            }
+        }
+        assert!(pairs.len() * core::mem::size_of_val(&pairs[0]) <= 2 * 1024 * 1024);
         let mut indices = alloc::vec![0; openstrike_character::index_count()];
         openstrike_character::copy_indices(&mut indices);
+        unsafe {
+            sys::sceKernelDcacheWritebackRange(
+                pairs.as_ptr() as *const _,
+                (pairs.len() * core::mem::size_of_val(&pairs[0])) as u32,
+            );
+            sys::sceKernelDcacheWritebackRange(
+                indices.as_ptr() as *const _,
+                (indices.len() * 2) as u32,
+            );
+        }
         Self {
-            vertices: alloc::vec![openstrike_character::Vertex::default(); openstrike_character::vertex_count()],
+            pairs,
             indices,
             visible: 0,
         }
     }
-    pub unsafe fn draw(&mut self, pool: &mut FramePool, bots: &[Bot], cam: &Camera3d) {
+    pub unsafe fn draw(&mut self, _pool: &mut FramePool, bots: &[Bot], cam: &Camera3d) {
         use core::ffi::c_void;
         use psp::sys::{GuPrimitive, MatrixMode, VertexType};
         let frustum = cam.frustum();
         self.visible = 0;
-        let mut index_data = core::ptr::null();
         for bot in bots {
             // Includes the carried rifle, stride and fallen body at every yaw.
             if !frustum.intersects_aabb(
@@ -138,37 +161,37 @@ impl OfficerRenderer {
             ) {
                 continue;
             }
-            if self.visible == 0 {
-                let bytes = core::slice::from_raw_parts(
-                    self.indices.as_ptr() as *const u8,
-                    self.indices.len() * 2,
-                );
-                index_data = pool.upload(bytes);
-            }
             let (clip, time) = bot.animation_sample();
-            openstrike_character::Pose::new(clip, time).fill(&mut self.vertices);
-            let bytes = core::slice::from_raw_parts(
-                self.vertices.as_ptr() as *const u8,
-                self.vertices.len() * core::mem::size_of::<openstrike_character::Vertex>(),
-            );
-            let data = pool.upload(bytes);
+            let (a, b, mix) = openstrike_character::Pose::new(clip, time).frame_pair();
+            // Terminal one-shot frames hold their last pose. At a clip
+            // boundary the next cached frame belongs to another action.
+            let mix = if a == b { 0.0 } else { mix };
+            sys::sceGuMorphWeight(0, 1.0 - mix);
+            sys::sceGuMorphWeight(1, mix);
             sys::sceGuSetMatrix(
                 MatrixMode::Model,
-                &pocket3d_gu::to_psp_matrix(bot.transform_scaled(1.0)),
+                // GE normalizes signed 16-bit positions by 32768; OPCH
+                // uses 256 quantization steps per game unit.
+                &pocket3d_gu::to_psp_matrix(bot.transform_scaled(32768.0 / 256.0)),
             );
             sys::sceGuDisable(GuState::Texture2D);
             sys::sceGuDrawArray(
                 GuPrimitive::Triangles,
                 VertexType::COLOR_8888
-                    | VertexType::VERTEX_32BITF
+                    | VertexType::VERTEX_16BIT
+                    | VertexType::VERTICES2
                     | VertexType::INDEX_16BIT
                     | VertexType::TRANSFORM_3D,
                 self.indices.len() as i32,
-                index_data as *const c_void,
-                data as *const c_void,
+                self.indices.as_ptr() as *const c_void,
+                self.pairs
+                    .as_ptr()
+                    .add(a * openstrike_character::vertex_count()) as *const c_void,
             );
             self.visible += 1;
         }
+        sys::sceGuMorphWeight(0, 1.0);
+        sys::sceGuMorphWeight(1, 0.0);
         sys::sceGuEnable(GuState::Texture2D);
         sys::sceGuSetMatrix(
             MatrixMode::Model,

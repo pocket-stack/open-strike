@@ -19,6 +19,34 @@ pub struct Vertex {
     pub z: f32,
 }
 
+/// Quantized GE input, including explicit padding so no uninitialized bytes
+/// reach the device. Two consecutive entries form one hardware morph vertex.
+#[derive(Clone, Copy, Debug, Default)]
+#[repr(C)]
+pub struct PackedVertex {
+    pub color: u32,
+    pub x: i16,
+    pub y: i16,
+    pub z: i16,
+    pub padding: u16,
+}
+
+pub fn baked_frame_count() -> usize {
+    u32_at(20) as usize
+}
+
+pub fn baked_vertex(frame: usize, i: usize) -> PackedVertex {
+    assert!(frame < baked_frame_count() && i < vertex_count());
+    let at = poses_start() + (frame * vertex_count() + i) * 6;
+    PackedVertex {
+        color: u32_at(colors_start() + i * 4),
+        x: u16_at(at) as i16,
+        y: u16_at(at + 2) as i16,
+        z: u16_at(at + 4) as i16,
+        padding: 0,
+    }
+}
+
 fn u32_at(offset: usize) -> u32 {
     u32::from_le_bytes(DATA[offset..offset + 4].try_into().unwrap())
 }
@@ -66,6 +94,16 @@ pub struct Pose {
     mix: f32,
 }
 impl Pose {
+    /// Global baked-frame indices and their interpolation weight. Renderers
+    /// with vertex morphing can consume the same samples without CPU skinning.
+    pub fn frame_pair(&self) -> (usize, usize, f32) {
+        let stride = vertex_count() * 6;
+        (
+            (self.a - poses_start()) / stride,
+            (self.b - poses_start()) / stride,
+            self.mix,
+        )
+    }
     pub fn new(clip: ActorClip, time: f32) -> Self {
         let at = HEADER + clip as usize * RECORD;
         let start = u32_at(at) as usize;
@@ -104,8 +142,26 @@ impl Pose {
     }
     pub fn fill(&self, out: &mut [Vertex]) {
         assert_eq!(out.len(), vertex_count());
-        for (i, v) in out.iter_mut().enumerate() {
-            *v = self.vertex(i);
+        // Validate the two complete frames once. Calling vertex() here left
+        // six byte-range checks and a function call inside every vertex on
+        // Allegrex; the checked fixed-size chunks keep the hot loop bounded.
+        let bytes = out.len() * 6;
+        let (a, _) = DATA[self.a..self.a + bytes].as_chunks::<6>();
+        let (b, _) = DATA[self.b..self.b + bytes].as_chunks::<6>();
+        let colors = colors_start();
+        let (colors, _) = DATA[colors..colors + out.len() * 4].as_chunks::<4>();
+        for (((v, a), b), color) in out.iter_mut().zip(a).zip(b).zip(colors) {
+            let component = |offset: usize| {
+                let a = i16::from_le_bytes([a[offset], a[offset + 1]]) as f32;
+                let b = i16::from_le_bytes([b[offset], b[offset + 1]]) as f32;
+                (a + (b - a) * self.mix) * (1.0 / 256.0)
+            };
+            *v = Vertex {
+                color: u32::from_le_bytes(*color),
+                x: component(0),
+                y: component(2),
+                z: component(4),
+            };
         }
     }
     pub fn position(&self, i: usize) -> Vec3 {
@@ -126,6 +182,8 @@ mod tests {
         assert!(triangle_count() <= 1400);
         assert!(vertex_count() * core::mem::size_of::<Vertex>() <= 65536);
         assert!(index_count() * 2 <= 65536);
+        assert_eq!(core::mem::size_of::<PackedVertex>(), 12);
+        assert!(baked_frame_count() * vertex_count() * 24 <= 2 * 1024 * 1024);
         assert_eq!(
             DATA.len(),
             poses_start() + u32_at(20) as usize * vertex_count() * 6
@@ -158,6 +216,67 @@ mod tests {
             let b = Pose::new(clip, duration(clip) * 2.0);
             for i in 0..vertex_count() {
                 assert!(a.position(i).distance(b.position(i)) < 0.01);
+            }
+        }
+    }
+    #[test]
+    fn batch_sampling_preserves_every_clip_and_vertex() {
+        let mut vertices = [Vertex::default(); 847];
+        for clip in ActorClip::ALL {
+            for fraction in [0.0, 0.13, 0.37, 0.81, 1.0, 2.0] {
+                let pose = Pose::new(clip, duration(clip) * fraction);
+                pose.fill(&mut vertices);
+                let (a, b, weight) = pose.frame_pair();
+                assert!(b == a || b == a + 1);
+                assert!((0.0..=1.0).contains(&weight));
+                if a == b {
+                    assert_eq!(weight, 0.0);
+                }
+                for (i, batch) in vertices.iter().enumerate() {
+                    let single = pose.vertex(i);
+                    assert_eq!(batch.color, single.color);
+                    assert_eq!([batch.x, batch.y, batch.z], [single.x, single.y, single.z]);
+                    let a = baked_vertex(a, i);
+                    let b = baked_vertex(b, i);
+                    assert_eq!(a.color, single.color);
+                    assert_eq!(a.color, b.color);
+                    for ((a, b), expected) in [a.x, a.y, a.z]
+                        .into_iter()
+                        .zip([b.x, b.y, b.z])
+                        .zip([single.x, single.y, single.z])
+                    {
+                        // GE decodes i16 / 32768; the model scale is 128.
+                        let actual = (a as f32 * (1.0 - weight) + b as f32 * weight) / 256.0;
+                        assert!((actual - expected).abs() < 0.001);
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn death_is_a_grounded_authored_fall_and_gaits_close_the_loop() {
+        let death = Pose::new(ActorClip::Death, duration(ActorClip::Death));
+        let mut low = f32::MAX;
+        let mut high = f32::MIN;
+        for i in 0..vertex_count() {
+            let y = death.position(i).y;
+            low = low.min(y);
+            high = high.max(y);
+        }
+        assert!(low >= 0.0 && low < 1.0);
+        assert!(
+            high < 30.0,
+            "corpse must lie down in its own action: {high}"
+        );
+        for clip in [ActorClip::Idle, ActorClip::Walk, ActorClip::Run] {
+            let (start, _, _) = Pose::new(clip, 0.0).frame_pair();
+            let count = u32_at(HEADER + clip as usize * RECORD + 4) as usize;
+            for i in 0..vertex_count() {
+                let a = baked_vertex(start, i);
+                let b = baked_vertex(start + count - 1, i);
+                for (a, b) in [a.x, a.y, a.z].into_iter().zip([b.x, b.y, b.z]) {
+                    assert!((a as i32 - b as i32).abs() < 128, "{clip:?} loop seam");
+                }
             }
         }
     }

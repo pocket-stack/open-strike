@@ -4,7 +4,7 @@ Editable rig + GLB and a bounded quantized vertex animation for handhelds.
 """
 import bpy, math, json, struct, hashlib
 from pathlib import Path
-from mathutils import Vector
+from mathutils import Vector, Matrix, Quaternion
 
 OUT = Path(__file__).resolve().parent
 bpy.ops.object.select_all(action='SELECT')
@@ -81,7 +81,7 @@ def limb(name,a,b,r1,r2,color,bone,n=6):
 bones=[('root',(0,0,0),(0,0,.2),None),('pelvis',(0,0,.9),(0,0,1.05),'root'),('spine',(0,0,1.05),(0,0,1.43),'pelvis'),('head',(0,0,1.49),(0,0,1.76),'spine')]
 for side,s in [('L',-1),('R',1)]:
     hip=(s*.115,0,.92); knee=(s*.13,.015,.51); ankle=(s*.135,0,.13)
-    shoulder=(s*.235,0,1.46); elbow=(s*.265,.17,1.22)
+    shoulder=(s*.235,0,1.46); elbow=(s*.265,.17,1.22) if side=='R' else (-.15,.335,1.25)
     hand=(.095,.355,1.275) if side=='R' else (.075,.60,1.292)
     bones += [(f'thigh.{side}',hip,knee,'pelvis'),(f'shin.{side}',knee,ankle,f'thigh.{side}'),(f'foot.{side}',ankle,(s*.135,.20,.085),f'shin.{side}'),(f'upper_arm.{side}',shoulder,elbow,'spine'),(f'forearm.{side}',elbow,hand,f'upper_arm.{side}'),(f'hand.{side}',hand,(hand[0],hand[1]+.08,hand[2]),f'forearm.{side}')]
 bones += [('weapon',(.095,.355,1.275),(.095,.80,1.275),'hand.R')]
@@ -91,7 +91,7 @@ for side,s in [('L',-1),('R',1)]:
     box('knee seam',(s*.13,.089,.52),(.135,.012,.035),'seam',f'thigh.{side}')
     rings('boot', [((s*.135,.035,.035),.083,.155),((s*.135,.035,.095),.083,.155),((s*.135,-.01,.195),.071,.075)],'black',f'foot.{side}')
     box('sole',(s*.135,.042,.028),(.157,.30,.035),'sole',f'foot.{side}')
-    shoulder=(s*.235,0,1.46); elbow=(s*.265,.17,1.22)
+    shoulder=(s*.235,0,1.46); elbow=(s*.265,.17,1.22) if side=='R' else (-.15,.335,1.25)
     hand=(.095,.355,1.275) if side=='R' else (.075,.60,1.292)
     mid=Vector(shoulder).lerp(Vector(elbow),.7)
     limb('short sleeve',shoulder,mid,.103,.09,'navy',f'upper_arm.{side}',6)
@@ -173,23 +173,67 @@ for name,_,_,_ in bones:
 obj.parent=rig; modifier=obj.modifiers.new('Officer skin','ARMATURE'); modifier.object=rig
 # Procedural authoring writes editable per-bone keyframes. Export/bake uses
 # Blender's evaluated armature, so desktop and handhelds share the same poses.
-CLIPS=[('Idle',2.0,True),('Walk',1.0,True),('Run',.667,True),('Fire',.333,False),('Reload',2.0,False),('Hit',.333,False),('Death',.833,False)]
+CLIPS=[('Idle',2.0,True),('Walk',1.0,True),('Run',.667,True),('Fire',.333,False),('Reload',2.0,False),('Hit',.333,False),('Death',1.25,False)]
+BAKE_HZ={'Idle':2,'Walk':16,'Run':24,'Fire':12,'Reload':8,'Hit':12,'Death':24}
+
+def smooth(a):
+    a=max(0,min(1,a)); return a*a*(3-2*a)
+
+def curve(t, keys):
+    for (ta,a),(tb,b) in zip(keys,keys[1:]):
+        if t<=tb: return a+(b-a)*smooth((t-ta)/(tb-ta))
+    return keys[-1][1]
+
+def aim_bone(name, direction):
+    b=rig.pose.bones[name]
+    rest=b.bone.matrix_local.to_quaternion()
+    rotation=(rest @ Vector((0,1,0))).rotation_difference(direction.normalized()) @ rest
+    b.matrix=Matrix.Translation(b.head) @ rotation.to_matrix().to_4x4()
+    bpy.context.view_layer.update()
+
+def solve_chain(upper, lower, target, pole):
+    # Authoring-only two-link IK. The saved/exported actions contain ordinary
+    # bone keys; none of this solver or its targets runs on a handheld.
+    thigh=rig.pose.bones[upper]; shin=rig.pose.bones[lower]
+    hip=thigh.head.copy(); delta=target-hip
+    a=thigh.bone.length; b=shin.bone.length
+    distance=max(abs(a-b)+.001,min(delta.length,a+b-.001)); axis=delta.normalized()
+    along=(a*a-b*b+distance*distance)/(2*distance)
+    bend=(pole-axis*pole.dot(axis)).normalized()
+    knee=hip+axis*along+bend*math.sqrt(max(0,a*a-along*along))
+    aim_bone(upper,knee-hip)
+    aim_bone(lower,hip+axis*distance-rig.pose.bones[lower].head)
+
+def plant_leg(side, ankle, pitch, pole=Vector((0,1,0))):
+    solve_chain('thigh.'+side,'shin.'+side,ankle,pole)
+    foot=rig.pose.bones['foot.'+side]
+    rotation=Quaternion((1,0,0),math.radians(pitch)) @ foot.bone.matrix_local.to_quaternion()
+    foot.matrix=Matrix.Translation(foot.head) @ rotation.to_matrix().to_4x4()
+    bpy.context.view_layer.update()
 
 def pose(clip,t):
     for b in rig.pose.bones: b.rotation_mode='XYZ'; b.rotation_euler=(0,0,0); b.location=(0,0,0)
     def rot(n,x=0,y=0,z=0): rig.pose.bones[n].rotation_euler=tuple(math.radians(a) for a in (x,y,z))
     phase=t*2*math.pi
     if clip in ('Walk','Run'):
-        phase=t*2*math.pi/(1 if clip=='Walk' else .667)
-        amp=23 if clip=='Walk' else 35
-        for side,offset in [('L',0),('R',math.pi)]:
-            p=phase+offset
-            rot('thigh.'+side,amp*math.sin(p))
-            rot('shin.'+side,-max(0,math.cos(p))*amp*1.35)
-            rot('foot.'+side,-amp*math.sin(p)*.35)
-        rig.pose.bones['root'].location.y=.010*(1-math.cos(phase*2))
-        rot('pelvis',0,2*math.sin(phase),0)
-        rot('spine',-3 if clip=='Walk' else -6,-2*math.sin(phase),0)
+        run=clip=='Run'; cycle=t/(.667 if run else 1.0); phase=cycle*2*math.pi
+        stance=.42 if run else .60; travel=.88 if run else .76
+        rig.pose.bones['root'].location.y=(-.15 if run else -.115)+.012*math.cos(phase*2)
+        rot('pelvis',0,2.0*math.sin(phase),1.2*math.sin(phase))
+        rot('spine',-7 if run else -2,-2.0*math.sin(phase),-1.2*math.sin(phase))
+        rot('head',2 if run else .5)
+        bpy.context.view_layer.update()
+        for side,offset,x in [('L',0,-.135),('R',.5,.135)]:
+            p=(cycle+offset)%1
+            if p<stance:
+                y=travel*(.5-p/stance); lift=0
+                pitch=10*(1-smooth(p/.12))-12*smooth((p-(stance-.10))/.10)
+            else:
+                swing=(p-stance)/(1-stance)
+                y=travel*(-.5+smooth(swing))
+                lift=(.24 if run else .14)*math.sin(math.pi*swing)**1.5
+                pitch=6*math.sin(math.pi*swing)
+            plant_leg(side,Vector((x,y,.13+lift)),pitch)
     elif clip=='Idle':
         rot('spine',math.sin(phase/2)*.65); rot('head',0,math.sin(phase/2)*1.3,0)
     elif clip=='Fire':
@@ -204,23 +248,50 @@ def pose(clip,t):
         a=math.sin(min(1,t/.333)*math.pi)
         rot('spine',-9*a,5*a); rot('head',6*a)
     elif clip=='Death':
-        a=min(1,t/.833); a=1-(1-a)**2
-        # Native death fall owns world orientation; this clip relaxes limbs.
-        rot('upper_arm.L',-42*a,0,-30*a); rot('upper_arm.R',-35*a,0,25*a)
-        rot('head',-18*a); rot('shin.L',-18*a); rot('thigh.R',12*a)
+        # Recoil, knee collapse, back/shoulder impact, then a small settle.
+        # The complete fall belongs to this action, including root motion.
+        fall=curve(t,[(0,0),(.10,5),(.32,23),(.62,62),(.86,91),(1.02,87),(1.25,88)])
+        rig.pose.bones['root'].location.y=curve(t,[(0,0),(.10,0),(.32,-.13),(.62,-.50),(.86,-.74),(1.02,-.69),(1.25,-.72)])
+        rig.pose.bones['root'].location.z=.16*smooth(t/.86)
+        rot('pelvis',fall,0,3*smooth(t/.8))
+        rot('spine',curve(t,[(0,0),(.10,13),(.32,9),(.62,6),(.86,-5),(1.08,2),(1.25,2)]))
+        a=smooth((t-.12)/.70)
+        rot('head',curve(t,[(0,0),(.10,-8),(.62,-15),(.86,9),(1.02,-6),(1.25,-5)]))
+        bpy.context.view_layer.update()
+        for side,s in [('L',-1),('R',1)]:
+            plant_leg(side,Vector((s*(.135+.05*a),(.49 if side=='L' else .62)*a,.13)),0,Vector((0,1-a,a)))
+        # Release the support hand and lower the carbine beside the body.
+        # Solve wrists in Blender so the final corpse does not hold a rifle
+        # vertically or float on a rigid straight leg.
+        for side,s in [('L',-1),('R',1)]:
+            hand=rig.pose.bones['hand.'+side]; initial=hand.matrix.to_quaternion()
+            pelvis=rig.pose.bones['pelvis'].head
+            target=Vector((s*.36,pelvis.y-(.60 if side=='L' else .35),pelvis.z-.03))
+            target=hand.head.lerp(target,a)
+            elbow=rig.pose.bones['forearm.'+side].head-rig.pose.bones['upper_arm.'+side].head
+            solve_chain('upper_arm.'+side,'forearm.'+side,target,elbow.lerp(Vector((s,0,-1)),a))
+            rotation=initial.slerp(hand.bone.matrix_local.to_quaternion(),a)
+            hand.matrix=Matrix.Translation(hand.head) @ rotation.to_matrix().to_4x4()
+            bpy.context.view_layer.update()
 
 rig.animation_data_create()
 for name,duration,loop in CLIPS:
     action=bpy.data.actions.new(name); rig.animation_data.action=action
     frames=round(duration*24)
+    previous={}
     for f in range(frames+1):
-        pose(name,f/24)
-        if name in ('Walk','Run'):
+        # Close looping actions exactly even when duration*24 is fractional.
+        pose(name,duration*f/frames)
+        if name in ('Walk','Run','Death'):
             bpy.context.view_layer.update()
-            sole = min((rig.pose.bones[g].matrix @ arm.bones[g].matrix_local.inverted() @ Vector(v)).z for v,g in zip(verts,groups) if g.startswith('foot.'))
+            sole = min((rig.pose.bones[g].matrix @ arm.bones[g].matrix_local.inverted() @ Vector(v)).z for v,g in zip(verts,groups) if name=='Death' or g.startswith('foot.'))
             rig.pose.bones['root'].location.y += .01 - sole
         for bone in rig.pose.bones:
-            bone.keyframe_insert('rotation_euler',frame=f+1,group=bone.name)
+            rotation=bone.rotation_euler.to_quaternion()
+            if bone.name in previous and rotation.dot(previous[bone.name])<0: rotation.negate()
+            previous[bone.name]=rotation.copy()
+            bone.rotation_mode='QUATERNION'; bone.rotation_quaternion=rotation
+            bone.keyframe_insert('rotation_quaternion',frame=f+1,group=bone.name)
             if bone.name=='root': bone.keyframe_insert('location',frame=f+1,group=bone.name)
     action.use_fake_user=True
 rig.animation_data.action=bpy.data.actions['Idle']; scene.frame_set(1)
@@ -233,7 +304,7 @@ mesh.calc_loop_triangles(); indices=[i for tri in mesh.loop_triangles for i in t
 frame_data=bytearray(); records=[]; frames_total=0
 for name,duration,loop in CLIPS:
     action=bpy.data.actions[name]; rig.animation_data.action=action
-    hz = 6 if name == 'Idle' else 24 if name in ('Run','Fire') else 12
+    hz = BAKE_HZ[name]
     count=max(2,round(duration*hz)+1); records.append((frames_total,count,duration,1 if loop else 0))
     for k in range(count):
         f=1+duration*24*k/(count-1); scene.frame_set(math.floor(f),subframe=f%1)
@@ -257,13 +328,13 @@ blob.extend(struct.pack('<'+'H'*len(indices),*indices)); blob.extend(frame_data)
 (OUT/'officer.opch').write_bytes(blob)
 assert len(indices)//3<=1400, len(indices)//3
 assert len(blob)<=512*1024,len(blob)
-receipt={'generator':'Blender '+bpy.app.version_string,'triangles':len(indices)//3,'vertices':len(verts),'bones':len(bones),'materials':1,'texture':[64,64],'clips':[{'name':c[0],'duration':c[1],'frames':r[1],'looping':c[2]} for c,r in zip(CLIPS,records)],'baked_frames':frames_total,'opch_bytes':len(blob),'glb_bytes':(OUT/'officer.glb').stat().st_size,'opch_sha256':hashlib.sha256(blob).hexdigest(),'budgets':{'triangles':1400,'animation_bytes':524288,'per_actor_draws':1,'runtime_sample_hz':60,'bake_hz_default':12,'bake_hz_idle':6,'bake_hz_fast':24},'origin':'Original geometry and animation authored for OpenStrike; repository MIT license.'}
+receipt={'generator':'Blender '+bpy.app.version_string,'triangles':len(indices)//3,'vertices':len(verts),'bones':len(bones),'materials':1,'texture':[64,64],'clips':[{'name':c[0],'duration':c[1],'frames':r[1],'looping':c[2]} for c,r in zip(CLIPS,records)],'baked_frames':frames_total,'opch_bytes':len(blob),'glb_bytes':(OUT/'officer.glb').stat().st_size,'opch_sha256':hashlib.sha256(blob).hexdigest(),'budgets':{'triangles':1400,'animation_bytes':524288,'per_actor_draws':1,'runtime_sample_hz':60,'bake_hz':BAKE_HZ,'psp_morph_cache_bytes':frames_total*len(verts)*24},'origin':'Original geometry and animation authored for OpenStrike; repository MIT license.'}
 # Compare quantized/interpolated handheld frames with Blender's evaluated
 # skin at the actual 60 Hz presentation cadence, including between bake keys.
 qa = {}
 for (name,duration,loop),(start,count,_,_) in zip(CLIPS,records):
     rig.animation_data.action=bpy.data.actions[name]
-    max_error=0.0; sole_min=100.0; sole_max=-100.0
+    max_error=0.0; sole_min=100.0; sole_max=-100.0; worst=None
     for sample in range(math.ceil(duration*60)+1):
         t=min(duration,sample/60); f=1+t*24
         scene.frame_set(math.floor(f),subframe=f%1)
@@ -275,11 +346,12 @@ for (name,duration,loop),(start,count,_,_) in zip(CLIPS,records):
             vb=struct.unpack_from('<hhh',frame_data,((start+b)*len(verts)+i)*6)
             baked=Vector([(x+(y-x)*mix)/256 for x,y in zip(va,vb)])
             exact=Vector((v.co.x,v.co.z,-v.co.y))*70/1.846
-            max_error=max(max_error,(exact-baked).length)
+            error=(exact-baked).length
+            if error>max_error: max_error=error; worst={'time':round(t,4),'vertex':i,'bone':groups[i]}
             if groups[i].startswith('foot.'): sole=min(sole,baked.y)
         sole_min=min(sole_min,sole); sole_max=max(sole_max,sole)
         evaluated.to_mesh_clear()
-    qa[name]={'max_position_error_units':round(max_error,4),'support_sole_min_units':round(sole_min,4),'support_sole_max_units':round(sole_max,4)}
+    qa[name]={'max_position_error_units':round(max_error,4),'worst_sample':worst,'support_sole_min_units':round(sole_min,4),'support_sole_max_units':round(sole_max,4)}
 receipt['sample_qa_60hz']=qa
 assert max(v['max_position_error_units'] for v in qa.values()) < 2.0, qa
 (OUT/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')

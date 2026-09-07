@@ -1,6 +1,6 @@
 //! Bots: T-side dummies with a small patrol/chase/attack brain.
 
-use core::f32::consts::{FRAC_PI_2, PI, TAU};
+use core::f32::consts::{PI, TAU};
 
 use glam::{Mat4, Vec3};
 use pocket3d_bsp::collide::{CharacterState, HullKind, MoveInput, MoveParams, step_character};
@@ -294,11 +294,12 @@ impl Bot {
             dt,
         );
 
-        // Animation: walk speed scales the clip; idle freezes it.
+        // Accumulate distance in 90-unit reference cycles. Presentation maps
+        // this to each authored gait's stance distance, avoiding foot skating.
         let ground_speed =
             sqrtf(self.state.vel.x * self.state.vel.x + self.state.vel.z * self.state.vel.z);
         if ground_speed > 12.0 {
-            self.anim.speed = (ground_speed / 90.0).clamp(0.6, 2.2);
+            self.anim.speed = ground_speed / 90.0;
         } else {
             self.anim.speed = 0.0;
         }
@@ -321,9 +322,17 @@ impl Bot {
             return (ActorClip::Fire, self.shot_age);
         }
         if self.anim.speed > 1.5 {
-            (ActorClip::Run, self.anim.time * (0.667 / 1.0))
+            // Blender: 0.88 m stance travel over 42% of a run cycle.
+            (
+                ActorClip::Run,
+                self.anim.time * (0.667 * 90.0 / (0.88 / 0.42 * 70.0 / 1.846)),
+            )
         } else if self.anim.speed > 0.0 {
-            (ActorClip::Walk, self.anim.time)
+            // Blender: 0.76 m stance travel over 60% of a walk cycle.
+            (
+                ActorClip::Walk,
+                self.anim.time * (90.0 / (0.76 / 0.60 * 70.0 / 1.846)),
+            )
         } else {
             (ActorClip::Idle, self.idle_time)
         }
@@ -335,17 +344,14 @@ impl Bot {
             .transform_point3(Vec3::new(3.60, 50.97, -36.52))
     }
 
-    /// World transform, including the death fall. `scale` maps the model's
+    /// World placement only; the authored Death action owns the whole fall.
+    /// `scale` maps the model's
     /// native height to the 70-unit game height (desktop passes
     /// `70.0 / asset.height()`).
     pub fn transform_scaled(&self, scale: f32) -> Mat4 {
         let feet = self.state.pos - Vec3::Y * 36.0;
-        let fall = (self.death_time * 3.0).min(1.0);
-        // Ease-out fall backwards, slight sink so the corpse hugs the ground.
-        let ease = 1.0 - (1.0 - fall) * (1.0 - fall);
-        Mat4::from_translation(feet + Vec3::Y * (2.0 - 2.0 * ease))
+        Mat4::from_translation(feet)
             * Mat4::from_rotation_y(self.yaw)
-            * Mat4::from_rotation_x(-ease * FRAC_PI_2 * 0.94)
             * Mat4::from_scale(Vec3::splat(scale))
     }
 

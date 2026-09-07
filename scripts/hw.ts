@@ -137,9 +137,14 @@ if (bench) {
   setInterval(() => {
     if (!existsSync(benchPath)) return;
     const lines = readFileSync(benchPath, "utf8").trimEnd().split("\n").filter(Boolean);
+    if (lines.length < seen) seen = 0; // the app truncates the log on reload
     for (; seen < lines.length; seen++) {
       try {
         const w = JSON.parse(lines[seen]);
+        if (w.spike_frame !== undefined) {
+          console.log(`[bench] long frame ${w.spike_frame}: ${w.work_us}us`);
+          continue;
+        }
         const fps = w.observed_fps_milli !== undefined
           ? (w.observed_fps_milli / 1000).toFixed(1)
           : Math.min(60, Math.round(1e6 / Math.max(w.avg_work_us, w.avg_gpu_us, 16667)));
