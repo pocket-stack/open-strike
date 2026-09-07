@@ -114,6 +114,9 @@ pub fn build_rifle() -> Vec<ColorVert> {
 pub struct OfficerRenderer {
     pairs: Vec<[openstrike_character::PackedVertex; 2]>,
     indices: Vec<u16>,
+    // A held pose reads only the first member of each cached pair. Doubling
+    // indices selects that member without another vertex cache or any upload.
+    held_indices: Vec<u16>,
     pub visible: u32,
 }
 impl OfficerRenderer {
@@ -132,6 +135,8 @@ impl OfficerRenderer {
         assert!(pairs.len() * core::mem::size_of_val(&pairs[0]) <= 2 * 1024 * 1024);
         let mut indices = alloc::vec![0; openstrike_character::index_count()];
         openstrike_character::copy_indices(&mut indices);
+        assert!(vertices * 2 <= u16::MAX as usize);
+        let held_indices: Vec<u16> = indices.iter().map(|i| i * 2).collect();
         unsafe {
             sys::sceKernelDcacheWritebackRange(
                 pairs.as_ptr() as *const _,
@@ -141,10 +146,15 @@ impl OfficerRenderer {
                 indices.as_ptr() as *const _,
                 (indices.len() * 2) as u32,
             );
+            sys::sceKernelDcacheWritebackRange(
+                held_indices.as_ptr() as *const _,
+                (held_indices.len() * 2) as u32,
+            );
         }
         Self {
             pairs,
             indices,
+            held_indices,
             visible: 0,
         }
     }
@@ -166,6 +176,7 @@ impl OfficerRenderer {
             // Terminal one-shot frames hold their last pose. At a clip
             // boundary the next cached frame belongs to another action.
             let mix = if a == b { 0.0 } else { mix };
+            let held = mix == 0.0;
             sys::sceGuMorphWeight(0, 1.0 - mix);
             sys::sceGuMorphWeight(1, mix);
             sys::sceGuSetMatrix(
@@ -179,11 +190,19 @@ impl OfficerRenderer {
                 GuPrimitive::Triangles,
                 VertexType::COLOR_8888
                     | VertexType::VERTEX_16BIT
-                    | VertexType::VERTICES2
+                    | if held {
+                        VertexType::empty()
+                    } else {
+                        VertexType::VERTICES2
+                    }
                     | VertexType::INDEX_16BIT
                     | VertexType::TRANSFORM_3D,
                 self.indices.len() as i32,
-                self.indices.as_ptr() as *const c_void,
+                if held {
+                    self.held_indices.as_ptr()
+                } else {
+                    self.indices.as_ptr()
+                } as *const c_void,
                 self.pairs
                     .as_ptr()
                     .add(a * openstrike_character::vertex_count()) as *const c_void,

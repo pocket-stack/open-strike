@@ -1,33 +1,19 @@
-// The OpenStrike HUD — a PocketJS app (Solid + Tailwind subset) composited
-// over the 3D frame. Three rules keep it 60 fps on a 333 MHz interpreter:
-//
-//   1. ZERO structural changes during gameplay: every element is mounted
-//      once at boot and toggled via opacity (paint skips opacity-0
-//      subtrees). A mid-combat <Show> mount costs a component build in
-//      QuickJS plus first layout in the core — measured ~20 ms on hardware.
-//   2. Per-frame values (hp, ammo, bars, flash decay) bypass Solid via the
-//      framework's imperative hot path (@pocketjs/framework/hot): one
-//      gated FFI call per actual change. A Solid signal write with even a
-//      few subscribers costs ~8 ms of interpretation on the PSP — that was
-//      the "every shot stutters" bug.
-//   3. Hot numbers live in FIXED cells (definite width+height), so a text
-//      swap skips relayout entirely; bar fills move via scaleX/translateX
-//      (paint-only), never via width (layout).
-//
-// Solid still owns everything rare: phase banner, score strip, kill feed.
-// Class strings are ternaries of FULL literals (the Tailwind subset bakes
-// at build time); `S` picks the compact PSP set or the scaled desktop set.
+// The OpenStrike HUD: Solid owns the fixed tree and quit dialog; combat
+// values use fixed text cells and a precompiled paint batch. Scores and
+// round transitions must follow the same path as ammo/health: they can
+// coincide with hits, effects and character animation on the PSP.
+// Native tweens advance damage/feed fades without per-frame JS calls.
+// Class strings remain full literals for the Tailwind subset compiler.
 
 import { createSignal, onCleanup, onMount, Show } from "solid-js";
 import { Text, View } from "@pocketjs/framework/components";
 import * as hot from "@pocketjs/framework/hot";
+import { animate, jump, createJumpBatch, type JumpBatch } from "@pocketjs/framework/animation";
 import { pushFocusScope } from "@pocketjs/framework/input";
 import { onButtonPress, onFrame } from "@pocketjs/framework/lifecycle";
 import { platform } from "@pocketjs/framework/platform";
-import { strike, type StrikeState } from "./sdk.ts";
+import { strike } from "./sdk.ts";
 import { ROUND_FREEZE, ROUND_END_PAUSE, phaseAge } from "./rules.ts";
-
-const TICK = 1 / 64;
 
 // Palette (military night-ops): lime reticle, amber warnings, blood red.
 const INK = "#e8f0f2";
@@ -62,20 +48,21 @@ type Ref = NonNullable<Parameters<typeof hot.text>[0]>;
 
 export default function Hud() {
   const s0 = strike.state();
-  // Solid signals: RARE updates only (phase flow, score, hostiles, reserve).
-  const [phase, setPhase] = createSignal(s0.phase);
-  const [aliveBots, setAliveBots] = createSignal(s0.aliveBots);
-  const [totalBots, setTotalBots] = createSignal(s0.totalBots);
-  const [wins, setWins] = createSignal(s0.wins);
-  const [losses, setLosses] = createSignal(s0.losses);
-  const [reserve, setReserve] = createSignal(s0.reserve);
-  const [countdown, setCountdown] = createSignal(0);
   // SELECT opens/closes the quit dialog (BTN.SELECT = 0x0001). The mount is
   // structural but user-initiated — never on the combat hot path.
   const [dialog, setDialog] = createSignal(false);
   onButtonPress(0x0001, () => setDialog((d) => !d));
 
-  // Hot refs: PER-FRAME values, written imperatively (rule 2).
+  // One owner per value: static JSX initial values, then the hot path.
+  let banner: Ref;
+  let bannerTitle: Ref;
+  let bannerSub: Ref;
+  let bannerTop: Ref;
+  let bannerBottom: Ref;
+  let winsText: Ref;
+  let lossesText: Ref;
+  let botsText: Ref;
+  let reserveText: Ref;
   let hpText: Ref;
   let hpFill: Ref;
   let ammoText: Ref;
@@ -89,36 +76,69 @@ export default function Hud() {
   const feedRows: Ref[] = [];
   const feedTexts: Ref[] = [];
 
-  let flash = 0;
-  let hitmark = 0;
-  const feedTtl: number[] = Array.from({ length: FEED_ROWS }, () => 0);
+  let feedDirty = false;
+  let flashDirty = false;
+  let resetEffects = false;
+  let hitDuration = 0;
+  const feedUntil: number[] = Array.from({ length: FEED_ROWS }, () => 0);
   const feedStr: string[] = Array.from({ length: FEED_ROWS }, () => " ");
   const pushFeed = (text: string) => {
+    feedDirty = true;
     for (let i = 0; i < FEED_ROWS - 1; i++) {
       feedStr[i] = feedStr[i + 1];
-      feedTtl[i] = feedTtl[i + 1];
+      feedUntil[i] = feedUntil[i + 1];
     }
     feedStr[FEED_ROWS - 1] = text;
-    feedTtl[FEED_ROWS - 1] = 2.4;
+    feedUntil[FEED_ROWS - 1] = strike.state().time + 2.4;
   };
 
-  strike.on("playerDamaged", () => (flash = 0.55));
-  strike.on("hit", (e) => {
+  onCleanup(strike.on("playerDamaged", () => (flashDirty = true)));
+  onCleanup(strike.on("hit", (e) => {
     if (e.type !== "hit") return;
-    hitmark = e.headshot ? 0.24 : 0.16;
+    hitDuration = e.headshot ? 240 : 160;
     if (e.fatal) pushFeed(e.headshot ? "HEADSHOT × HOSTILE DOWN" : "HOSTILE DOWN");
-  });
-  strike.on("roundReset", () => {
-    for (let i = 0; i < FEED_ROWS; i++) feedTtl[i] = 0;
-    flash = 0;
+  }));
+  onCleanup(strike.on("roundReset", () => {
+    for (let i = 0; i < FEED_ROWS; i++) feedUntil[i] = 0;
+    feedDirty = true;
+    resetEffects = true;
+  }));
+
+  // Compile this fixed HUD's paint properties once. A kill/reset can change
+  // many at once; publish them with one native call, preserving the existing
+  // framework fallback on hosts without setPropBatch. Animated effect props
+  // have their own jump/animate owner and are deliberately outside this batch.
+  const P = {
+    banner: 0, title: 1, top: 2, bottom: 3,
+    hpText: 4, hpFill: 5, hpScale: 6, hpOffset: 7,
+    ammoText: 8, ammoFill: 9, ammoScale: 10, ammoOffset: 11,
+    reload: 12, reloadScale: 13, reloadOffset: 14, vignette: 15, crosshair: 16,
+  };
+  let paintBatch: JumpBatch;
+  let paintDirty = false;
+  const paint = (index: number, value: number) => {
+    paintBatch.set(index, value);
+    paintDirty = true;
+  };
+  onMount(() => {
+    paintBatch = createJumpBatch([
+      [banner, "opacity"], [bannerTitle, "textColor"],
+      [bannerTop, "bgColor"], [bannerBottom, "bgColor"],
+      [hpText, "textColor"], [hpFill, "bgColor"], [hpFill, "scaleX"], [hpFill, "translateX"],
+      [ammoText, "textColor"], [ammoFill, "bgColor"], [ammoFill, "scaleX"], [ammoFill, "translateX"],
+      [reloadGroup, "opacity"], [reloadFill, "scaleX"], [reloadFill, "translateX"],
+      [vignette, "opacity"], [crosshair, "opacity"],
+    ]);
+    const initial = [0, INK_N, INK_N, INK_N, INK_N, INK_N, 1, 0, INK_N, LIME_N, 1, 0, 0, 1, 0, 0, 1];
+    for (let i = 0; i < initial.length; i++) paint(i, initial[i]);
   });
 
   /** Left-anchored fill: scaleX shrinks about the center, so pull the bar
    *  left by half the lost width. Paint-only — never touches layout. */
-  const fill = (node: Ref, frac: number, w: number) => {
+  const fill = (scale: number, frac: number, w: number) => {
     const f = Math.max(0, Math.min(1, frac));
-    hot.prop(node, "scaleX", f);
-    hot.prop(node, "translateX", (-(1 - f) * w * S) / 2);
+    paint(scale, f);
+    paint(scale + 1, (-(1 - f) * w * S) / 2);
   };
 
   // Interpreter discipline: on a 333 MHz QuickJS even a GATED call costs
@@ -128,45 +148,55 @@ export default function Hud() {
   let lAmmo = -1;
   let lPhase = "";
   let lBots = -1;
+  let lTotal = -1;
   let lWins = -1;
   let lLosses = -1;
   let lReserve = -1;
   let lCount = -1;
   let lReloading = false;
   let lAlive = true;
-  let lFlash = 0;
-  let lHit = 0;
+  let lHpColor = 0;
+  let lAmmoColor = 0;
+  let lAmmoBarColor = 0;
   onFrame(() => {
     const s = strike.state();
 
     if (s.phase !== lPhase) {
       lPhase = s.phase;
-      setPhase(s.phase);
+      lCount = -1;
+      paint(P.banner, s.phase === "live" ? 0 : 1);
+      if (s.phase !== "live") {
+        const color = s.phase === "won" ? LIME_N : s.phase === "lost" ? RED_N : INK_N;
+        hot.text(bannerTitle, s.phase === "won" ? "HOSTILES ELIMINATED" : s.phase === "lost" ? "YOU DIED" : "ROUND START");
+        paint(P.title, color);
+        paint(P.top, color);
+        paint(P.bottom, color);
+      }
     }
     if (s.phase !== "live") {
       const left = (s.phase === "starting" ? ROUND_FREEZE : ROUND_END_PAUSE) - phaseAge();
       const c = Math.max(0, Math.ceil(left));
       if (c !== lCount) {
         lCount = c;
-        setCountdown(c);
+        hot.text(bannerSub, (s.phase === "starting" ? "GO IN " : "NEXT ROUND IN ") + c);
       }
     }
-    if (s.aliveBots !== lBots) {
+    if (s.aliveBots !== lBots || s.totalBots !== lTotal) {
       lBots = s.aliveBots;
-      setAliveBots(s.aliveBots);
-      setTotalBots(s.totalBots);
+      lTotal = s.totalBots;
+      hot.text(botsText, s.aliveBots + "/" + s.totalBots);
     }
     if (s.wins !== lWins) {
       lWins = s.wins;
-      setWins(s.wins);
+      hot.text(winsText, s.wins);
     }
     if (s.losses !== lLosses) {
       lLosses = s.losses;
-      setLosses(s.losses);
+      hot.text(lossesText, s.losses);
     }
     if (s.reserve !== lReserve) {
       lReserve = s.reserve;
-      setReserve(s.reserve);
+      hot.text(reserveText, "/ " + s.reserve);
     }
 
     // Hot values: imperative, change-guarded, zero-layout.
@@ -175,58 +205,83 @@ export default function Hud() {
       lHp = hp;
       hot.text(hpText, hp);
       const hpColor = hp > 60 ? INK_N : hp > 25 ? AMBER_N : RED_N;
-      hot.prop(hpText, "textColor", hpColor);
-      hot.prop(hpFill, "bgColor", hpColor);
-      fill(hpFill, hp / 100, BAR_W);
+      if (hpColor !== lHpColor) {
+        lHpColor = hpColor;
+        paint(P.hpText, hpColor);
+        paint(P.hpFill, hpColor);
+      }
+      fill(P.hpScale, hp / 100, BAR_W);
     }
     if (s.ammo !== lAmmo) {
       lAmmo = s.ammo;
       hot.text(ammoText, s.ammo);
-      hot.prop(ammoText, "textColor", s.ammo === 0 ? RED_N : INK_N);
-      hot.prop(ammoFill, "bgColor", s.ammo <= 5 ? RED_N : LIME_N);
-      fill(ammoFill, s.ammo / 30, AMMO_BAR_W);
+      const color = s.ammo === 0 ? RED_N : INK_N;
+      const barColor = s.ammo <= 5 ? RED_N : LIME_N;
+      if (color !== lAmmoColor) {
+        lAmmoColor = color;
+        paint(P.ammoText, color);
+      }
+      if (barColor !== lAmmoBarColor) {
+        lAmmoBarColor = barColor;
+        paint(P.ammoFill, barColor);
+      }
+      fill(P.ammoScale, s.ammo / 30, AMMO_BAR_W);
     }
     if (s.reloading !== lReloading) {
       lReloading = s.reloading;
-      hot.prop(reloadGroup, "opacity", s.reloading ? 1 : 0);
+      paint(P.reload, s.reloading ? 1 : 0);
     }
-    if (s.reloading) fill(reloadFill, s.reloadFrac, AMMO_BAR_W);
+    if (s.reloading) {
+      const frac = Math.max(0, Math.min(1, s.reloadFrac));
+      paint(P.reloadScale, frac);
+      paint(P.reloadOffset, (-(1 - frac) * AMMO_BAR_W * S) / 2);
+    }
     if (s.alive !== lAlive) {
       lAlive = s.alive;
-      hot.prop(vignette, "opacity", s.alive ? 0 : 0.4);
-      hot.prop(crosshair, "opacity", s.alive ? 1 : 0);
+      paint(P.vignette, s.alive ? 0 : 0.4);
+      paint(P.crosshair, s.alive ? 1 : 0);
     }
 
-    if (flash > 0 || lFlash > 0) {
-      flash = Math.max(0, flash - TICK * 1.3);
-      lFlash = flash;
-      hot.prop(flashOverlay, "opacity", flash * 0.5);
+    // The core advances these tweens at the same fixed tick as the game.
+    // jump/animate exclusively own these props: no hot-value cache can hide
+    // a repeated hit's restart or the cancellation on a round reset.
+    if (resetEffects) {
+      jump(flashOverlay, "opacity", 0);
+      jump(hitmarker, "opacity", 0);
+      resetEffects = false;
+      flashDirty = false;
+      hitDuration = 0;
     }
-    if (hitmark > 0 || lHit > 0) {
-      hitmark = Math.max(0, hitmark - TICK);
-      lHit = hitmark;
-      hot.prop(hitmarker, "opacity", hitmark > 0 ? 1 : 0);
+    if (flashDirty) {
+      jump(flashOverlay, "opacity", 0.275);
+      animate(flashOverlay, "opacity", 0, { dur: 423, easing: "linear" });
+      flashDirty = false;
     }
-
-    for (let i = 0; i < FEED_ROWS; i++) {
-      if (feedTtl[i] <= 0) continue;
-      feedTtl[i] -= TICK;
-      hot.text(feedTexts[i], feedStr[i]);
-      hot.prop(feedRows[i], "opacity", feedTtl[i] > 0.4 ? 1 : feedTtl[i] < 0 ? 0 : feedTtl[i] / 0.4);
+    if (hitDuration > 0) {
+      jump(hitmarker, "opacity", 1);
+      animate(hitmarker, "opacity", 0, { dur: 0, delay: hitDuration, easing: "linear" });
+      hitDuration = 0;
+    }
+    if (feedDirty) {
+      for (let i = 0; i < FEED_ROWS; i++) {
+        const left = Math.max(0, feedUntil[i] - s.time);
+        hot.text(feedTexts[i], feedStr[i]);
+        jump(feedRows[i], "opacity", Math.min(1, left / 0.4));
+        if (left > 0) {
+          animate(feedRows[i], "opacity", 0, {
+            dur: Math.min(left, 0.4) * 1000,
+            delay: Math.max(0, left - 0.4) * 1000,
+            easing: "linear",
+          });
+        }
+      }
+      feedDirty = false;
+    }
+    if (paintDirty) {
+      paintBatch.commit();
+      paintDirty = false;
     }
   });
-
-  const bannerOn = () => phase() !== "live";
-  const bannerColor = () =>
-    phase() === "won" ? LIME : phase() === "lost" ? RED : INK;
-  const bannerTitle = () =>
-    phase() === "won"
-      ? "HOSTILES ELIMINATED"
-      : phase() === "lost"
-        ? "YOU DIED"
-        : "ROUND START";
-  const bannerSub = () =>
-    (phase() === "starting" ? "GO IN " : "NEXT ROUND IN ") + countdown() + " ";
 
   return (
     <View class="w-full h-full">
@@ -273,29 +328,31 @@ export default function Hud() {
         <View class="flex-row justify-between items-start">
           <View style={{ width: 90 * S }} />
           {/* Phase banner: one instance, text/color swapped in place */}
-          <View class="flex-col items-center" style={{ opacity: bannerOn() ? 1 : 0 }}>
+          <View ref={(el) => (banner = el)} class="flex-col items-center" style={{ opacity: 0 }}>
             <View
               class="flex-col items-center gap-1 px-4 py-1 rounded-sm"
               style={{ bgColor: STRIP }}
             >
-              <View style={{ width: 120 * S, height: 1 * S, bgColor: bannerColor() }} />
+              <View ref={(el) => (bannerTop = el)} style={{ width: 120 * S, height: 1 * S, bgColor: INK }} />
               <Text
-                class={S >= 2 ? "text-xl font-bold" : "text-sm font-bold"}
-                style={{ textColor: bannerColor() }}
+                ref={(el) => (bannerTitle = el)}
+                class={S >= 2 ? "text-xl font-bold text-center" : "text-sm font-bold text-center"}
+                style={{ textColor: INK, width: S >= 2 ? 280 : 174, height: S >= 2 ? 28 : 18 }}
               >
-                {bannerTitle()}
+                ROUND START
               </Text>
               <Text
                 class={
                   S >= 2
-                    ? "text-sm font-bold tracking-wide"
-                    : "text-xs font-bold tracking-wide"
+                    ? "text-sm font-bold tracking-wide text-center"
+                    : "text-xs font-bold tracking-wide text-center"
                 }
-                style={{ textColor: AMBER }}
+                ref={(el) => (bannerSub = el)}
+                style={{ textColor: AMBER, width: S >= 2 ? 280 : 174, height: S >= 2 ? 20 : 14 }}
               >
-                {bannerSub()}
+                GO IN 2
               </Text>
-              <View style={{ width: 120 * S, height: 1 * S, bgColor: bannerColor() }} />
+              <View ref={(el) => (bannerBottom = el)} style={{ width: 120 * S, height: 1 * S, bgColor: INK }} />
             </View>
           </View>
           {/* Score strip + pooled kill feed */}
@@ -314,9 +371,10 @@ export default function Hud() {
                     ? "text-sm font-bold tracking-wide"
                     : "text-xs font-bold tracking-wide"
                 }
-                style={{ textColor: LIME }}
+                ref={(el) => (winsText = el)}
+                style={{ textColor: LIME, width: S >= 2 ? 50 : 25, height: S >= 2 ? 20 : 14 }}
               >
-                {"" + wins()}
+                {s0.wins}
               </Text>
               <Text
                 class={
@@ -324,9 +382,10 @@ export default function Hud() {
                     ? "text-sm font-bold tracking-wide"
                     : "text-xs font-bold tracking-wide"
                 }
-                style={{ textColor: RED }}
+                ref={(el) => (lossesText = el)}
+                style={{ textColor: RED, width: S >= 2 ? 50 : 25, height: S >= 2 ? 20 : 14 }}
               >
-                {"" + losses()}
+                {s0.losses}
               </Text>
               <View style={{ width: 1, height: 8 * S, bgColor: "#e8f0f240" }} />
               <Text
@@ -335,9 +394,10 @@ export default function Hud() {
                     ? "text-sm font-bold tracking-wide"
                     : "text-xs font-bold tracking-wide"
                 }
-                style={{ textColor: AMBER }}
+                ref={(el) => (botsText = el)}
+                style={{ textColor: AMBER, width: S >= 2 ? 68 : 34, height: S >= 2 ? 20 : 14 }}
               >
-                {aliveBots() + "/" + totalBots()}
+                {s0.aliveBots + "/" + s0.totalBots}
               </Text>
             </View>
             {Array.from({ length: FEED_ROWS }, (_, i) => (
@@ -452,9 +512,10 @@ export default function Hud() {
                     ? "text-sm font-bold tracking-wide"
                     : "text-xs font-bold tracking-wide"
                 }
-                style={{ textColor: DIM }}
+                ref={(el) => (reserveText = el)}
+                style={{ textColor: DIM, width: S >= 2 ? 70 : 35, height: S >= 2 ? 20 : 14 }}
               >
-                {"/ " + reserve()}
+                {"/ " + s0.reserve}
               </Text>
             </View>
             <View style={{ width: AMMO_BAR_W * S, height: 2 * S, bgColor: "#e8f0f21c" }}>

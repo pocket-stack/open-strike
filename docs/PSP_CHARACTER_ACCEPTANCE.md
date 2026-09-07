@@ -1,5 +1,10 @@
 # PSP officer hardware acceptance — 2026-09-07
 
+**Follow-up:** manual combat on this revision exposed 41–49 fps windows and
+JS/HUD transition stalls. The animation-only sweep below remains valid but
+does not constitute full combat acceptance. See the subsequent
+[combat investigation and fixes](PSP_COMBAT_PERFORMANCE.md).
+
 The original CPU-baked officer path dropped to about 30 fps with six actors.
 The PSP now uses its GE vertex morphing hardware; actor CPU cost fell from
 about 8.24 ms to 0.41 ms for the same 1,390 triangles and 847 unique vertices
@@ -60,10 +65,12 @@ frames, 145 reloading frames and ammo changing between 30 and 12; arena
 high-water was 15,234,304 bytes. The screenshot was taken after that timing
 interval. The script remains in `scripted-gameplay-input.json`.
 
-The user confirmed drops on the original build. The optimized manual build
-has been restored, but fresh human movement/fire/reload and visual feedback
-on this revision are **pending**. Automated input proves the physical-device
-runtime path, not acceptance of the physical controls or subjective feel.
+The user subsequently played this optimized build and confirmed significant
+combat stalls. The software route above fired without actually killing bots;
+it missed the full hit/death/round-transition path. That coverage gap is now
+addressed by a dedicated full-simulation combat probe and separate report.
+Automated input proves the physical-device runtime path, not acceptance of
+the physical controls or subjective feel.
 Character PR #17 remains separate from merged upstream PR #16 and stays
 Draft until that review is complete.
 

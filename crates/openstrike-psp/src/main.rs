@@ -18,6 +18,10 @@ extern crate alloc;
 
 #[cfg(feature = "character-bench")]
 mod character_probe;
+#[cfg(feature = "combat-bench")]
+mod combat_probe;
+#[cfg(all(feature = "combat-bench", feature = "character-bench"))]
+compile_error!("combat-bench requires the real simulation; use one probe at a time");
 mod input;
 mod maps;
 mod present;
@@ -194,8 +198,11 @@ unsafe fn run() {
 
     // ---- Frame loop (pipelined present, one tick per vblank) ----
     let mut frame_count: u32 = 0;
+    let mut last_present_vcount = sys::sceDisplayGetVcount();
     #[cfg(feature = "bench")]
     let mut bench = Bench::new();
+    #[cfg(feature = "combat-bench")]
+    let mut combat = combat_probe::CombatProbe::new();
     loop {
         #[cfg(feature = "bench")]
         let bench_t0 = bench_now();
@@ -206,11 +213,18 @@ unsafe fn run() {
         {
             sample = capture_sample(frame_count, sample);
         }
-        let _tick = pad.map(sample.0, sample.1, sample.2, DT);
+        #[cfg_attr(not(feature = "combat-bench"), allow(unused_mut))]
+        let mut _tick = pad.map(sample.0, sample.1, sample.2, DT);
         let mask = sample.0.bits() as i32;
 
         // Simulation (game stage only; the menu has no world).
         if let Some(g) = &mut game {
+            #[cfg(feature = "combat-bench")]
+            {
+                _tick.sim = combat.input(&mut g.sim);
+                _tick.look_dx = 0.0;
+                _tick.look_dy = 0.0;
+            }
             #[cfg(not(feature = "character-bench"))]
             {
                 g.sim.apply_look(_tick.look_dx, _tick.look_dy);
@@ -225,6 +239,10 @@ unsafe fn run() {
         }
         #[cfg(feature = "bench")]
         let bench_after_sim = bench_now();
+        #[cfg(feature = "bench")]
+        if let Some(g) = &game {
+            bench.observe_events(&g.sim);
+        }
 
         // Guest turn: facts out, HUD frame, microtasks, intent in.
         let ok = match &mut game {
@@ -272,7 +290,25 @@ unsafe fn run() {
         sys::sceGuSync(GuSyncMode::Finish, GuSyncBehavior::Wait);
         #[cfg(feature = "bench")]
         let bench_after_sync = bench_now();
-        sys::sceDisplayWaitVblankStart();
+        // A completed frame may already be inside a NEW blanking interval.
+        // Waiting for another start would discard that refresh opportunity.
+        // The vcount guard still permits at most one simulation/present per
+        // refresh when a very cheap frame finishes within the same blank.
+        let current_vcount = sys::sceDisplayGetVcount();
+        if current_vcount == last_present_vcount {
+            sys::sceDisplayWaitVblankStart();
+        } else {
+            sys::sceDisplayWaitVblank();
+        }
+        let presented_vcount = sys::sceDisplayGetVcount();
+        #[cfg(feature = "bench")]
+        {
+            bench.reused_vblanks += (presented_vcount == current_vcount) as u32;
+            bench.missed_vblanks += presented_vcount
+                .wrapping_sub(last_present_vcount)
+                .saturating_sub(1);
+        }
+        last_present_vcount = presented_vcount;
         sys::sceGuSwapBuffers();
         #[cfg(feature = "bench")]
         let bench_after_present = bench_now();
@@ -411,6 +447,10 @@ struct Bench {
     ammo_max: u32,
     previous_pos: Option<glam::Vec3>,
     clip_frames: [u32; 7],
+    events: [u32; 6],
+    reused_vblanks: u32,
+    missed_vblanks: u32,
+    max_work_frame: u32,
 }
 
 #[cfg(feature = "bench")]
@@ -462,6 +502,26 @@ impl Bench {
             ammo_max: 0,
             previous_pos: None,
             clip_frames: [0; 7],
+            events: [0; 6],
+            reused_vblanks: 0,
+            missed_vblanks: 0,
+            max_work_frame: 0,
+        }
+    }
+
+    fn observe_events(&mut self, sim: &StrikeSim) {
+        use openstrike_core::sim::GameEvent;
+        self.events[5] += sim.fired_this_tick as u32;
+        for event in &sim.events {
+            match event {
+                GameEvent::Hit { fatal, .. } => {
+                    self.events[0] += 1;
+                    self.events[1] += *fatal as u32;
+                }
+                GameEvent::PlayerDamaged { .. } => self.events[2] += 1,
+                GameEvent::PlayerDied => self.events[3] += 1,
+                GameEvent::RoundReset => self.events[4] += 1,
+            }
         }
     }
 
@@ -542,6 +602,7 @@ impl Bench {
         if work > self.max_work {
             self.max_work = work;
             self.max_segs = segs;
+            self.max_work_frame = abs_frame;
         }
         // Spike forensics: any frame past ~1.5x budget logs itself with its
         // absolute frame index so it can be correlated with the input script.
@@ -586,7 +647,7 @@ impl Bench {
         self.work_times.sort_unstable();
         self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}]}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{},\"input\":{{\"buttons_or\":{},\"analog_frames\":{},\"movement_frames\":{},\"look_frames\":{},\"ammo_min\":{},\"ammo_max\":{},\"reloading_frames\":{}}},\"actor_clip_frames\":[{},{},{},{},{},{},{}],\"combat_probe\":{},\"events\":{{\"hits\":{},\"kills\":{},\"damage\":{},\"deaths\":{},\"resets\":{},\"shots\":{}}},\"reused_vblanks\":{},\"missed_vblanks\":{},\"max_work_frame\":{}}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -636,6 +697,16 @@ impl Bench {
             self.clip_frames[4],
             self.clip_frames[5],
             self.clip_frames[6],
+            cfg!(feature = "combat-bench"),
+            self.events[0],
+            self.events[1],
+            self.events[2],
+            self.events[3],
+            self.events[4],
+            self.events[5],
+            self.reused_vblanks,
+            self.missed_vblanks,
+            self.max_work_frame,
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -677,6 +748,9 @@ impl Bench {
         self.ammo_min = u32::MAX;
         self.ammo_max = 0;
         self.clip_frames = [0; 7];
+        self.events = [0; 6];
+        self.reused_vblanks = 0;
+        self.missed_vblanks = 0;
     }
 }
 

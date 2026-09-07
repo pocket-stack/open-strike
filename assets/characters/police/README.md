@@ -36,9 +36,11 @@ map-bearing EBOOT packages remain local/ignored.
   glTF parser, texture allocation or per-frame character heap allocation.
 - PSP uses GE hardware morphing, u16 indexed triangles, one draw per visible
   actor and camera-frustum culling. Adjacent pairs of 12-byte packed vertices
-  occupy one immutable 1,971,816-byte cache shared by every actor, plus 8,340
-  bytes of indices. These are built and cache-flushed once; each draw selects
-  a pair and two weights. No character vertex upload or CPU interpolation is
+  occupy one immutable 1,971,816-byte cache shared by every actor, plus two
+  8,340-byte index tables. A held pose selects the first member of each pair
+  with doubled indices, avoiding unnecessary two-frame morphing. The buffers
+  are built and cache-flushed once; moving poses select a pair and two weights.
+  No character vertex upload or CPU interpolation is
   needed per frame. The buffers remain alive while the GE reads them. Signed
   16-bit GE coordinates normalize by 32768, so the model scale restores 128
   game units per normalized unit (OPCH has 256 steps per game unit).

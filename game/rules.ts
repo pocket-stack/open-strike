@@ -3,7 +3,6 @@
 // too weak). Round flow, scoring and difficulty all live HERE — the Rust
 // core simulates; it never decides.
 
-import { createSignal } from "solid-js";
 import { strike } from "./sdk.ts";
 
 /** Freeze time before a round goes live (seconds). */
@@ -30,8 +29,8 @@ strike.configureBots({
 });
 
 /** Seconds since the current phase began (HUD reads this for countdowns). */
-const [phaseAge, setPhaseAge] = createSignal(0);
-export { phaseAge };
+let age = 0;
+export const phaseAge = () => age;
 
 let lastPhase = "";
 let phaseStart = 0;
@@ -41,7 +40,7 @@ strike.onTick((s) => {
     lastPhase = s.phase;
     phaseStart = s.time;
   }
-  setPhaseAge(s.time - phaseStart);
+  age = s.time - phaseStart;
 
   if (s.phase === "starting" && s.time - phaseStart >= ROUND_FREEZE) {
     strike.setPhase("live");

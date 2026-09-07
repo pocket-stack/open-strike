@@ -36,6 +36,7 @@ const features: string[] = [];
 if (argv.includes("--capture")) features.push("capture");
 if (argv.includes("--bench")) features.push("bench");
 if (argv.includes("--character-bench")) features.push("character-bench");
+if (argv.includes("--combat-bench")) features.push("combat-bench");
 
 const mapsRoot = process.env.OPENSTRIKE_MAPS ?? `${home}/Downloads/cs-maps-20260705-1836`;
 if (cookedMaps !== undefined && (!cookedMaps || !existsSync(cookedMaps))) {

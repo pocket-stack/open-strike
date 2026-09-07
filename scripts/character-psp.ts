@@ -13,7 +13,7 @@ const target = resolve(repo, "crates/openstrike-psp/target/mipsel-sony-psp/debug
 mkdirSync(out, { recursive: true });
 const shots = [
   ["Idle", 30], ["Walk", 210], ["Run", 390], ["Fire", 550],
-  ["Reload", 775], ["Hit", 910], ["Death", 1140],
+  ["Reload", 775], ["Hit", 910], ["Death", 1140], ["Death-held", 1170],
   ["three", 2730], ["six", 3990],
 ] as const;
 const receipt: unknown[] = [];
@@ -50,4 +50,4 @@ await Bun.write(`${out}/receipt.json`, JSON.stringify({
   kind: "PPSSPP software rendering; not hardware timing", revision: (await $`git rev-parse HEAD`.text()).trim(),
   asset, shots: receipt,
 }, null, 2) + "\n");
-console.log(`officer PSP: nine capture scenarios passed; ${out}/receipt.json`);
+console.log(`officer PSP: ten capture scenarios passed; ${out}/receipt.json`);

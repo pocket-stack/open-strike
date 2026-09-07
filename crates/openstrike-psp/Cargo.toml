@@ -37,3 +37,5 @@ capture = []
 bench = []
 # Repeatable actor count/clip scene, never enabled in ordinary builds.
 character-bench = ["bench"]
+# Real simulation, weapon traces and JS round rules with scripted opponents/input.
+combat-bench = ["bench"]
