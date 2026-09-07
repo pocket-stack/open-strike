@@ -268,7 +268,7 @@ describe("OpenStrike Symbian tooling", () => {
       "build-std=core,alloc,compiler_builtins",
     );
     expect(native).toContain(
-      "/pocketjs/engine/symbian/targets/armv6-symbian-eabi.json",
+      "/pocketjs/hosts/nokia-e7/targets/armv6-symbian-eabi.json",
     );
 
     const packaged = symbianPackageCommand(
