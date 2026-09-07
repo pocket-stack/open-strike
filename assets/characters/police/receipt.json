@@ -1,0 +1,106 @@
+{
+  "generator": "Blender 5.1.2",
+  "triangles": 1390,
+  "vertices": 847,
+  "bones": 17,
+  "materials": 1,
+  "texture": [
+    64,
+    64
+  ],
+  "clips": [
+    {
+      "name": "Idle",
+      "duration": 2.0,
+      "frames": 13,
+      "looping": true
+    },
+    {
+      "name": "Walk",
+      "duration": 1.0,
+      "frames": 13,
+      "looping": true
+    },
+    {
+      "name": "Run",
+      "duration": 0.667,
+      "frames": 17,
+      "looping": true
+    },
+    {
+      "name": "Fire",
+      "duration": 0.333,
+      "frames": 9,
+      "looping": false
+    },
+    {
+      "name": "Reload",
+      "duration": 2.0,
+      "frames": 25,
+      "looping": false
+    },
+    {
+      "name": "Hit",
+      "duration": 0.333,
+      "frames": 5,
+      "looping": false
+    },
+    {
+      "name": "Death",
+      "duration": 0.833,
+      "frames": 11,
+      "looping": false
+    }
+  ],
+  "baked_frames": 93,
+  "opch_bytes": 484490,
+  "glb_bytes": 225416,
+  "opch_sha256": "a55ef1d61da186c624d14aa163c4651b0f982d4012a038a14f4a06acf5597080",
+  "budgets": {
+    "triangles": 1400,
+    "animation_bytes": 524288,
+    "per_actor_draws": 1,
+    "runtime_sample_hz": 60,
+    "bake_hz_default": 12,
+    "bake_hz_idle": 6,
+    "bake_hz_fast": 24
+  },
+  "origin": "Original geometry and animation authored for OpenStrike; repository MIT license.",
+  "sample_qa_60hz": {
+    "Idle": {
+      "max_position_error_units": 0.0159,
+      "support_sole_min_units": 0.3984,
+      "support_sole_max_units": 0.3984
+    },
+    "Walk": {
+      "max_position_error_units": 0.7694,
+      "support_sole_min_units": 0.3789,
+      "support_sole_max_units": 0.6758
+    },
+    "Run": {
+      "max_position_error_units": 1.5584,
+      "support_sole_min_units": 0.3734,
+      "support_sole_max_units": 0.8057
+    },
+    "Fire": {
+      "max_position_error_units": 0.2098,
+      "support_sole_min_units": 0.3984,
+      "support_sole_max_units": 0.3984
+    },
+    "Reload": {
+      "max_position_error_units": 0.151,
+      "support_sole_min_units": 0.3984,
+      "support_sole_max_units": 0.3984
+    },
+    "Hit": {
+      "max_position_error_units": 0.4782,
+      "support_sole_min_units": 0.3984,
+      "support_sole_max_units": 0.3984
+    },
+    "Death": {
+      "max_position_error_units": 0.3591,
+      "support_sole_min_units": -0.7578,
+      "support_sole_max_units": 0.3984
+    }
+  }
+}

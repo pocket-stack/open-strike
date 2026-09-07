@@ -210,6 +210,16 @@ Round rules (v0.1, see `game/rules.ts`): eliminate every bot to win; die and
 you lose. Either way the round resets automatically and the score carries
 over.
 
+## Police character
+
+The current bot is an original Blender patrol officer with Idle, Walk, Run,
+Fire, Reload, Hit and Death actions. Desktop uses its skinned GLB; PSP, Vita
+and E7 share a quantized animation bake. The PSP path uses one indexed draw
+per visible officer (1,390 triangles) and keeps the animation under 512 KiB.
+The [editable source, preview and validation workflow](assets/characters/police/README.md)
+include a map-independent desktop character preview and PSP capture suite.
+Physical PSP performance acceptance for this replacement remains pending.
+
 ## Headless verification
 
 Every acceptance criterion runs without a window — the renderer draws

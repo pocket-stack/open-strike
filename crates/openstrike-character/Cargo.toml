@@ -1,0 +1,9 @@
+[package]
+name = "openstrike-character"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+glam = { version = "0.33", default-features = false, features = ["libm"] }
+openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }

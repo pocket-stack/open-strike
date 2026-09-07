@@ -92,6 +92,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstrike-character"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "openstrike-core",
+]
+
+[[package]]
 name = "openstrike-core"
 version = "0.1.0"
 dependencies = [
@@ -107,6 +115,7 @@ dependencies = [
  "glam",
  "libm",
  "libquickjs-sys",
+ "openstrike-character",
  "openstrike-core",
  "pocket3d-bsp",
  "pocket3d-gu",

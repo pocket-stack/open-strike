@@ -3,6 +3,7 @@
 
 mod args;
 mod bot;
+mod character_preview;
 mod game;
 mod guest;
 mod scripts;
@@ -23,6 +24,10 @@ const WINDOW_SIZE: (u32, u32) = (1600, 900);
 fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     let args = Args::parse()?;
+
+    if args.script.as_deref() == Some("character") {
+        return character_preview::run(&args);
+    }
 
     let map_path = args.resolve_map_path()?;
     log::info!("loading {}", map_path.display());
@@ -69,7 +74,11 @@ fn main() -> Result<()> {
             capture_mouse: true,
             ..AppConfig::default()
         },
-        Windowed { game, strike, guest_error: None },
+        Windowed {
+            game,
+            strike,
+            guest_error: None,
+        },
     )
 }
 

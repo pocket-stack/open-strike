@@ -241,7 +241,7 @@ mod vita {
         let mut frame_pool = FramePool::new();
         let sky = SkyParams::default();
         let rifle = present_data::build_rifle();
-        let bot_body = present_data::build_bot_body();
+        let mut bot_body = present_data::OfficerGeometry::new();
         let mut effect_geometry = present_data::EffectGeometry::default();
         let mut menu_time = 0.0f64;
         let mut frame = 0u32;
@@ -324,7 +324,7 @@ mod vita {
             sky::draw(&mut frame_pool, &camera, &sky);
             if let Some(current) = &mut game {
                 current.world.draw(&mut frame_pool, &camera);
-                present_data::draw_bots(&mut frame_pool, &bot_body, &current.sim.bots);
+                present_data::draw_bots(&mut frame_pool, &mut bot_body, &current.sim.bots);
                 present_data::draw_effects(
                     &mut frame_pool,
                     &mut effect_geometry,

@@ -9,14 +9,14 @@ use alloc::vec::Vec;
 #[cfg(target_os = "vita")]
 use glam::Mat4;
 use glam::Vec3;
-use openstrike_core::weapon::{rifle_boxes, FxBeam, FxSprite, GUN_COLORS};
 use openstrike_core::StrikeSim;
-#[cfg(target_os = "vita")]
-use pocket3d_vita::mesh::{
-    clear_depth_for_viewmodel, draw_additive_tris, draw_color_tris, ColorVert,
-};
+use openstrike_core::weapon::{FxBeam, FxSprite, GUN_COLORS, rifle_boxes};
 #[cfg(target_os = "vita")]
 use pocket3d_vita::FramePool;
+#[cfg(target_os = "vita")]
+use pocket3d_vita::mesh::{
+    ColorVert, clear_depth_for_viewmodel, draw_additive_tris, draw_color_tris,
+};
 
 #[cfg(target_os = "vita")]
 pub type ColorVertex = ColorVert;
@@ -148,55 +148,32 @@ pub fn build_rifle() -> Vec<ColorVertex> {
 
 /// Bot body in feet space (+Y up, facing -Z); the renderer applies each bot's
 /// shared `transform_scaled(1.0)` matrix.
-pub fn build_bot_body() -> Vec<ColorVertex> {
-    const UNIFORM: [u8; 4] = [168, 142, 92, 255];
-    const VEST: [u8; 4] = [70, 74, 62, 255];
-    const SKIN: [u8; 4] = [206, 168, 130, 255];
-    const GUNMETAL: [u8; 4] = [40, 40, 44, 255];
-    let mut out = Vec::new();
-    add_box(
-        &mut out,
-        Vec3::new(-11.0, 0.0, -6.0),
-        Vec3::new(-2.0, 32.0, 6.0),
-        UNIFORM,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(2.0, 0.0, -6.0),
-        Vec3::new(11.0, 32.0, 6.0),
-        UNIFORM,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(-13.0, 32.0, -7.0),
-        Vec3::new(13.0, 54.0, 7.0),
-        VEST,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(-17.0, 34.0, -5.0),
-        Vec3::new(-13.0, 52.0, 5.0),
-        UNIFORM,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(13.0, 34.0, -5.0),
-        Vec3::new(17.0, 52.0, 5.0),
-        UNIFORM,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(-6.0, 54.0, -6.0),
-        Vec3::new(6.0, 68.0, 6.0),
-        SKIN,
-    );
-    add_box(
-        &mut out,
-        Vec3::new(-2.0, 40.0, -26.0),
-        Vec3::new(2.0, 44.0, -4.0),
-        GUNMETAL,
-    );
-    out
+pub struct OfficerGeometry {
+    posed: Vec<openstrike_character::Vertex>,
+    pub vertices: Vec<ColorVertex>,
+}
+
+impl OfficerGeometry {
+    pub fn new() -> Self {
+        Self {
+            posed: alloc::vec![openstrike_character::Vertex::default(); openstrike_character::vertex_count()],
+            vertices: Vec::with_capacity(openstrike_character::index_count()),
+        }
+    }
+    pub fn pose(&mut self, bot: &openstrike_core::Bot) {
+        let (clip, time) = bot.animation_sample();
+        openstrike_character::Pose::new(clip, time).fill(&mut self.posed);
+        self.vertices.clear();
+        for i in 0..openstrike_character::index_count() {
+            let v = self.posed[openstrike_character::index(i)];
+            self.vertices.push(ColorVertex {
+                color: v.color,
+                x: v.x,
+                y: v.y,
+                z: v.z,
+            });
+        }
+    }
 }
 
 /// Build camera-facing quads for the current muzzle/tracer/impact effects.
@@ -248,9 +225,14 @@ pub fn build_effects_into(out: &mut EffectGeometry, sim: &StrikeSim, camera_forw
 /// A `pocket3d_vita` pass must be active and `pool` must remain stable until
 /// `pocket3d_vita::end_3d` flushes it.
 #[cfg(target_os = "vita")]
-pub unsafe fn draw_bots(pool: &mut FramePool, body: &[ColorVertex], bots: &[openstrike_core::Bot]) {
+pub unsafe fn draw_bots(
+    pool: &mut FramePool,
+    body: &mut OfficerGeometry,
+    bots: &[openstrike_core::Bot],
+) {
     for bot in bots {
-        unsafe { draw_color_tris(pool, body, bot.transform_scaled(1.0)) };
+        body.pose(bot);
+        unsafe { draw_color_tris(pool, &body.vertices, bot.transform_scaled(1.0)) };
     }
 }
 
@@ -296,10 +278,11 @@ mod tests {
     #[test]
     fn procedural_meshes_are_triangle_lists() {
         let rifle = build_rifle();
-        let bot = build_bot_body();
+        let mut bot = OfficerGeometry::new();
+        bot.pose(&openstrike_core::Bot::spawn(Vec3::ZERO, 0.0));
         assert!(!rifle.is_empty());
         assert_eq!(rifle.len() % 3, 0);
-        assert_eq!(bot.len(), 7 * 6 * 6);
+        assert_eq!(bot.vertices.len(), openstrike_character::index_count());
     }
 
     #[test]

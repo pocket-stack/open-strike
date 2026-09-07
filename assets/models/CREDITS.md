@@ -6,4 +6,5 @@
   T. Choonyung" from [Mixamo](https://www.mixamo.com) (© Adobe), used under
   the Mixamo license as an embedded application asset — do not extract and
   redistribute it as a standalone asset. Clips: Idle / Run / TPose / Walk.
-  Used as the OpenStrike bot character.
+  Historical bot asset; the current character is the original Blender officer
+  in `assets/characters/police/`.

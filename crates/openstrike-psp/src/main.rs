@@ -14,9 +14,10 @@
 //! arena allocator installed by linking the host library, pak fed to the
 //! core before JS). The cooked map renders in place from `.rodata`.
 
-
 extern crate alloc;
 
+#[cfg(feature = "character-bench")]
+mod character_probe;
 mod input;
 mod maps;
 mod present;
@@ -28,11 +29,11 @@ use libquickjs_sys::*;
 use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(feature = "capture")]
-use psp::sys::DisplaySetBufSync;
+use psp::sys::CtrlButtons;
 #[cfg(feature = "capture")]
 use psp::sys::DisplayPixelFormat;
 #[cfg(feature = "capture")]
-use psp::sys::CtrlButtons;
+use psp::sys::DisplaySetBufSync;
 #[cfg(any(feature = "capture", feature = "bench"))]
 use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
@@ -122,16 +123,14 @@ unsafe fn run() {
     // 'static is honest; soundness rule: the current Game (which borrows
     // it through CookedMap) is dropped before any reload overwrites it.
     let words = (max_map_bytes as usize + 15) / 16 + 1;
-    let map_buf_ptr = alloc::boxed::Box::leak(
-        alloc::vec![0u128; words].into_boxed_slice(),
-    )
-    .as_mut_ptr() as *mut u8;
+    let map_buf_ptr = alloc::boxed::Box::leak(alloc::vec![0u128; words].into_boxed_slice())
+        .as_mut_ptr() as *mut u8;
     let map_buf_cap = words * 16;
 
     let mut pool = FramePool::new();
     let sky_params = sky::SkyParams::default();
     let rifle = present::build_rifle();
-    let bot_body = present::build_bot_body();
+    let mut officers = present::OfficerRenderer::new();
 
     // ---- QuickJS ----
     let rt = pocketjs_psp::qjs_alloc::new_runtime();
@@ -207,13 +206,20 @@ unsafe fn run() {
         {
             sample = capture_sample(frame_count, sample);
         }
-        let tick = pad.map(sample.0, sample.1, sample.2, DT);
+        let _tick = pad.map(sample.0, sample.1, sample.2, DT);
         let mask = sample.0.bits() as i32;
 
         // Simulation (game stage only; the menu has no world).
         if let Some(g) = &mut game {
-            g.sim.apply_look(tick.look_dx, tick.look_dy);
-            g.sim.tick(&g.world.map().collision, DT, &tick.sim);
+            #[cfg(not(feature = "character-bench"))]
+            {
+                g.sim.apply_look(_tick.look_dx, _tick.look_dy);
+                g.sim.tick(&g.world.map().collision, DT, &_tick.sim);
+            }
+            #[cfg(feature = "character-bench")]
+            {
+                g.sim.time += DT;
+            }
         } else {
             menu_time += DT as f64;
         }
@@ -243,6 +249,10 @@ unsafe fn run() {
             Some(g) => g.sim.apply(cmd, 0),
             None => boot_cfg.push(cmd),
         });
+        #[cfg(feature = "character-bench")]
+        if let Some(g) = &mut game {
+            character_probe::stage(&mut g.sim, frame_count);
+        }
         let mut host_cmd: Option<strike::HostCmd> = None;
         strike::drain_host(|c| host_cmd = Some(c));
 
@@ -289,9 +299,17 @@ unsafe fn run() {
         };
         pocket3d_gu::begin_3d(&cam);
         sky::draw(&mut pool, &cam, &sky_params);
+        #[cfg(feature = "bench")]
+        let mut actor_us = 0;
         if let Some(g) = &mut game {
             g.world.draw(&mut pool, &cam);
-            present::draw_bots(&mut pool, &bot_body, &g.sim.bots);
+            #[cfg(feature = "bench")]
+            let actor_start = bench_now();
+            officers.draw(&mut pool, &g.sim.bots, &cam);
+            #[cfg(feature = "bench")]
+            {
+                actor_us = bench_now() - actor_start;
+            }
             present::draw_effects(&mut pool, &g.sim, &cam);
             present::draw_viewmodel(&mut pool, &rifle, &g.sim);
         }
@@ -320,6 +338,8 @@ unsafe fn run() {
                 bench_after_present,
                 faces,
                 tris,
+                actor_us,
+                if game.is_some() { officers.visible } else { 0 },
             );
         }
 
@@ -371,6 +391,16 @@ struct Bench {
     /// Breakdown of the frame that set max_work: 4 segments + the
     /// uninstrumented rest (draw recording, input, GE list build).
     max_segs: [u64; 5],
+    actor_sum: u64,
+    actor_max: u64,
+    actor_count_sum: u64,
+    actor_count_max: u32,
+    last_start: u64,
+    frame_sum: u64,
+    frame_samples: u32,
+    frame_times: [u32; 300],
+    work_times: [u32; 300],
+    late_frames: u32,
 }
 
 #[cfg(feature = "bench")]
@@ -403,6 +433,16 @@ impl Bench {
             tris_sum: 0,
             seg_sums: [0; 4],
             max_segs: [0; 5],
+            actor_sum: 0,
+            actor_max: 0,
+            actor_count_sum: 0,
+            actor_count_max: 0,
+            last_start: 0,
+            frame_sum: 0,
+            frame_samples: 0,
+            frame_times: [0; 300],
+            work_times: [0; 300],
+            late_frames: 0,
         }
     }
 
@@ -417,6 +457,8 @@ impl Bench {
         after_present: u64,
         faces: u32,
         tris: u32,
+        actor_us: u64,
+        actors: u32,
     ) {
         let now = bench_now();
         let mut prev = t0;
@@ -430,6 +472,23 @@ impl Bench {
         let work = now.saturating_sub(t0).saturating_sub(present);
         let gpu = after_sync.saturating_sub(before_sync);
         segs[4] = work.saturating_sub(segs[0] + segs[1] + segs[2] + segs[3]);
+        let interval = if self.last_start == 0 {
+            0
+        } else {
+            t0.saturating_sub(self.last_start)
+        };
+        self.last_start = t0;
+        if interval > 0 {
+            self.frame_sum += interval;
+            self.frame_samples += 1;
+        }
+        self.frame_times[self.frames as usize] = interval.min(u32::MAX as u64) as u32;
+        self.work_times[self.frames as usize] = work.min(u32::MAX as u64) as u32;
+        self.late_frames += (interval > 20_000) as u32;
+        self.actor_sum += actor_us;
+        self.actor_max = self.actor_max.max(actor_us);
+        self.actor_count_sum += actors as u64;
+        self.actor_count_max = self.actor_count_max.max(actors);
         self.frames += 1;
         self.work_sum += work;
         if work > self.max_work {
@@ -441,7 +500,13 @@ impl Bench {
         if work > 25_000 {
             let line = alloc::format!(
                 "{{\"spike_frame\":{},\"work_us\":{},\"segs_us\":[{},{},{},{},{}]}}\n",
-                abs_frame, work, segs[0], segs[1], segs[2], segs[3], segs[4],
+                abs_frame,
+                work,
+                segs[0],
+                segs[1],
+                segs[2],
+                segs[3],
+                segs[4],
             );
             for path in [
                 b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -470,8 +535,10 @@ impl Bench {
         let n = self.frames as u64;
         self.window += 1;
         let arena = unsafe { pocketjs_psp::arena::stats() };
+        self.work_times.sort_unstable();
+        self.frame_times.sort_unstable();
         let line = alloc::format!(
-            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}]}}\n",
+            "{{\"window\":{},\"frames\":{},\"avg_work_us\":{},\"max_work_us\":{},\"avg_gpu_us\":{},\"max_gpu_us\":{},\"avg_faces\":{},\"avg_tris\":{},\"avg_sim_us\":{},\"avg_dispatch_us\":{},\"avg_js_us\":{},\"avg_ui_us\":{},\"arena_capacity_bytes\":{},\"arena_bump_bytes\":{},\"arena_tail_free_bytes\":{},\"max_segs_us\":[{},{},{},{},{}],\"actor_probe\":{},\"avg_actor_us\":{},\"max_actor_us\":{},\"avg_actors\":{},\"max_actors\":{},\"actor_triangles_each\":{},\"observed_fps_milli\":{},\"p95_frame_us\":{},\"p99_frame_us\":{},\"p95_work_us\":{},\"late_frames\":{}}}\n",
             self.window,
             n,
             self.work_sum / n,
@@ -492,6 +559,17 @@ impl Bench {
             self.max_segs[2],
             self.max_segs[3],
             self.max_segs[4],
+            cfg!(feature = "character-bench"),
+            self.actor_sum / n,
+            self.actor_max,
+            self.actor_count_sum / n,
+            self.actor_count_max,
+            openstrike_character::triangle_count(),
+            self.frame_samples as u64 * 1_000_000_000 / self.frame_sum.max(1),
+            self.frame_times[284],
+            self.frame_times[296],
+            self.work_times[284],
+            self.late_frames,
         );
         for path in [
             b"host0:/OpenStrike-bench.jsonl\0".as_ptr(),
@@ -518,6 +596,13 @@ impl Bench {
         self.tris_sum = 0;
         self.seg_sums = [0; 4];
         self.max_segs = [0; 5];
+        self.actor_sum = 0;
+        self.actor_max = 0;
+        self.actor_count_sum = 0;
+        self.actor_count_max = 0;
+        self.frame_sum = 0;
+        self.frame_samples = 0;
+        self.late_frames = 0;
     }
 }
 
@@ -543,10 +628,7 @@ fn parse_num(s: &str) -> Option<u32> {
 }
 
 #[cfg(feature = "capture")]
-fn capture_sample(
-    frame: u32,
-    fallback: (CtrlButtons, u8, u8),
-) -> (CtrlButtons, u8, u8) {
+fn capture_sample(frame: u32, fallback: (CtrlButtons, u8, u8)) -> (CtrlButtons, u8, u8) {
     if CAPTURE_INPUT.is_empty() {
         return fallback;
     }

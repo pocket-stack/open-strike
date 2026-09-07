@@ -12,8 +12,8 @@ use pocket3d::prelude::*;
 use pocket3d::winit::event::MouseButton;
 use pocket3d::winit::keyboard::KeyCode;
 
-pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
 use openstrike_core::StrikeSim;
+pub use openstrike_core::sim::{Command, GameEvent, Phase, SimInput};
 
 use crate::weapon::build_rifle;
 
@@ -28,6 +28,7 @@ pub struct OpenStrike {
     pub bot_asset: Option<Arc<ModelAsset>>,
     /// Clip index of the bot model's walk cycle (see load in `upload`).
     pub(crate) bot_walk_clip: usize,
+    bot_clips: [usize; 7],
     pub rifle_asset: Option<Arc<ModelAsset>>,
     /// Exit the app after this many seconds (smoke tests).
     pub auto_quit: Option<f32>,
@@ -73,6 +74,7 @@ impl OpenStrike {
             debug_overlay: false,
             bot_asset: None,
             bot_walk_clip: 0,
+            bot_clips: [0; 7],
             rifle_asset: None,
             auto_quit: None,
         }
@@ -89,7 +91,7 @@ impl OpenStrike {
         self.scene.world = Some(world);
         self.rifle_asset = Some(build_rifle(gpu, renderer));
 
-        match crate::args::find_asset("models/Soldier.glb") {
+        match crate::args::find_asset("characters/police/officer.glb") {
             Some(path) => {
                 match ModelAsset::load_glb(
                     gpu,
@@ -105,6 +107,13 @@ impl OpenStrike {
                             .iter()
                             .position(|c| c.name.eq_ignore_ascii_case("walk"))
                             .unwrap_or(0);
+                        for clip in openstrike_core::bot::ActorClip::ALL {
+                            self.bot_clips[clip as usize] = asset
+                                .clips
+                                .iter()
+                                .position(|c| c.name == clip.name())
+                                .expect("officer GLB is missing a required action");
+                        }
                         self.bot_asset = Some(asset);
                         let clip = self.bot_walk_clip;
                         for bot in &mut self.sim.bots {
@@ -115,7 +124,9 @@ impl OpenStrike {
                 }
             }
             None => {
-                log::warn!("bot model not found (models/Soldier.glb); bots render as nothing")
+                log::warn!(
+                    "bot model not found (characters/police/officer.glb); bots render as nothing"
+                )
             }
         }
     }
@@ -173,11 +184,17 @@ impl OpenStrike {
             for bot in &self.sim.bots {
                 let mut inst = ModelInstance::new(asset.clone());
                 inst.transform = bot.transform_scaled(scale);
+                let (clip, time) = bot.animation_sample();
                 inst.anim = AnimState {
-                    clip: bot.anim.clip,
-                    time: bot.anim.time,
-                    speed: bot.anim.speed,
-                    looping: bot.anim.looping,
+                    clip: self.bot_clips[clip as usize],
+                    time,
+                    speed: 1.0,
+                    looping: matches!(
+                        clip,
+                        openstrike_core::bot::ActorClip::Idle
+                            | openstrike_core::bot::ActorClip::Walk
+                            | openstrike_core::bot::ActorClip::Run
+                    ),
                 };
                 inst.tint = bot.tint();
                 self.scene.models.push(inst);
@@ -201,11 +218,13 @@ impl OpenStrike {
         let mut sprites = Vec::new();
         let mut beams = Vec::new();
         self.sim.effects.emit(&mut sprites, &mut beams);
-        self.scene.sprites.extend(sprites.into_iter().map(|s| Sprite {
-            pos: s.pos,
-            size: s.size,
-            color: s.color,
-        }));
+        self.scene
+            .sprites
+            .extend(sprites.into_iter().map(|s| Sprite {
+                pos: s.pos,
+                size: s.size,
+                color: s.color,
+            }));
         self.scene.beams.extend(beams.into_iter().map(|b| Beam {
             a: b.a,
             b: b.b,
@@ -244,4 +263,3 @@ impl OpenStrike {
         }
     }
 }
-

@@ -19,7 +19,7 @@ const repo = new URL("..", import.meta.url).pathname;
 const argv = Bun.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith("-")));
 const release = flags.has("-r") || flags.has("--release");
-const bench = flags.has("--bench");
+const bench = flags.has("--bench") || flags.has("--character-bench");
 const noBuild = flags.has("--no-build");
 const profile = release ? "release" : "debug";
 
@@ -59,9 +59,8 @@ async function findBasePort(start: number): Promise<number> {
 
 async function build(): Promise<boolean> {
   if (noBuild) return existsSync(`${targetDir}/openstrike-psp.prx`);
-  const args = [...(release ? ["-r"] : []), ...(bench ? ["--bench"] : [])];
-  const extra = argv.filter((a) => !a.startsWith("-"));
-  const res = await $`bun ${repo}scripts/psp.ts ${args} ${extra}`.cwd(repo).nothrow();
+  const args = argv.filter((arg) => arg !== "--no-build" && arg !== "--daemon");
+  const res = await $`bun ${repo}scripts/psp.ts ${args}`.cwd(repo).nothrow();
   return res.exitCode === 0;
 }
 
@@ -141,14 +140,17 @@ if (bench) {
     for (; seen < lines.length; seen++) {
       try {
         const w = JSON.parse(lines[seen]);
-        const fps = Math.min(60, Math.round(1e6 / Math.max(w.avg_work_us, w.avg_gpu_us, 16667)));
+        const fps = w.observed_fps_milli !== undefined
+          ? (w.observed_fps_milli / 1000).toFixed(1)
+          : Math.min(60, Math.round(1e6 / Math.max(w.avg_work_us, w.avg_gpu_us, 16667)));
         const seg =
           w.avg_sim_us !== undefined
             ? `  [sim ${w.avg_sim_us} dispatch ${w.avg_dispatch_us} js ${w.avg_js_us} ui ${w.avg_ui_us}]`
             : "";
         console.log(
           `[bench] work ${w.avg_work_us}us (max ${w.max_work_us})  gpu ${w.avg_gpu_us}us (max ${w.max_gpu_us})  ` +
-            `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}  → ~${fps} fps`,
+            `faces ${w.avg_faces}  tris ${w.avg_tris}${seg}  → ${fps} fps` +
+            (w.avg_actor_us !== undefined ? `  actors ${w.avg_actors} / ${w.avg_actor_us}us  p95 ${w.p95_frame_us}us p99 ${w.p99_frame_us}us` : ""),
         );
       } catch {
         // partial line; retry next poll
