@@ -1462,12 +1462,21 @@ dependencies = [
  "env_logger",
  "glam",
  "log",
+ "openstrike-character",
  "openstrike-core",
  "pocket-mod",
  "pocket-ui-wgpu",
  "pocket3d",
  "pocketjs-core",
  "wgpu",
+]
+
+[[package]]
+name = "openstrike-character"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "openstrike-core",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@ build = "build.rs"
 path = "src/lib.rs"
 
 [dependencies]
+openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core" }
 glam = "0.33"
 pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp" }

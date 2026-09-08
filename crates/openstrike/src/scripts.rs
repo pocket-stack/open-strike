@@ -559,7 +559,7 @@ fn model_script(mut game: OpenStrike, args: &Args) -> Result<()> {
         bot.anim = openstrike_core::AnimPlayback {
             clip: 0,
             time: t,
-            speed: 0.0,
+            speed: 1.0,
             looping: true,
         };
         game.bots.push(bot);

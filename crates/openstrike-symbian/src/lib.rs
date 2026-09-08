@@ -107,7 +107,7 @@ struct State {
     viewport_height: u32,
     dynamic: DynamicRenderer,
     rifle: Vec<present_data::ColorVertex>,
-    bot_body: Vec<present_data::ColorVertex>,
+    bot_body: present_data::OfficerGeometry,
     effects: present_data::EffectGeometry,
 }
 
@@ -309,7 +309,7 @@ unsafe extern "C" fn boot(
         viewport_height: height,
         dynamic: DynamicRenderer::new(),
         rifle: present_data::build_rifle(),
-        bot_body: present_data::build_bot_body(),
+        bot_body: present_data::OfficerGeometry::new(),
         effects: present_data::EffectGeometry::default(),
     });
     1
@@ -432,10 +432,11 @@ unsafe extern "C" fn render(
     }
 
     for bot in &game.sim.bots {
+        state.bot_body.pose(bot);
         if state
             .dynamic
             .draw_color_tris(
-                gles_vertices(&state.bot_body),
+                gles_vertices(&state.bot_body.vertices),
                 bot.transform_scaled(1.0),
                 view_projection,
                 BlendMode::Opaque,

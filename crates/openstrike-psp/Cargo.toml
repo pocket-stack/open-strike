@@ -19,6 +19,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+openstrike-character = { path = "../openstrike-character" }
 psp = { git = "https://github.com/pocket-stack/rust-psp.git", rev = "2cbaf8c9bc72569c76240a1d9743de10731e5f6b", features = ["external-c-heap", "abort-only", "external-global-alloc"] }
 libquickjs-sys = { git = "https://github.com/pocket-stack/quickjs-rs.git", rev = "ba5bdd0dc013518768e76cd9e05cd30ed53dd35b" }
 pocketjs-psp = { path = "../../vendor/pocketjs/hosts/psp" }
@@ -34,3 +35,7 @@ libm = "0.2"
 capture = []
 # Rolling frame-time windows to host0:/OpenStrike-bench.jsonl (hardware).
 bench = []
+# Repeatable actor count/clip scene, never enabled in ordinary builds.
+character-bench = ["bench"]
+# Real simulation, weapon traces and JS round rules with scripted opponents/input.
+combat-bench = ["bench"]

@@ -18,6 +18,7 @@ default = []
 embedded-map-catalog = []
 
 [dependencies]
+openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core", default-features = false, features = ["libm"] }
 pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false, features = ["libm"] }
 pocket3d-gles2 = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-gles2" }

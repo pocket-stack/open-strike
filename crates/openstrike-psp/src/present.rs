@@ -1,4 +1,4 @@
-//! GE presentation of the sim: procedural bot bodies, the rifle viewmodel,
+//! GE presentation of the sim: baked officer animation, the rifle viewmodel,
 //! and additive effect billboards. The desktop equivalent is scene
 //! composition in crates/openstrike/src/game.rs — here the "scene" is GE
 //! commands recorded straight into the open display list.
@@ -32,12 +32,60 @@ fn add_box(out: &mut Vec<ColorVert>, min: Vec3, max: Vec3, rgba: [u8; 4]) {
     };
     // (brightness, four corners CCW seen from outside)
     let faces: [(f32, [Vec3; 4]); 6] = [
-        (0.85, [corner(1.0, -1.0, 1.0), corner(1.0, -1.0, -1.0), corner(1.0, 1.0, -1.0), corner(1.0, 1.0, 1.0)]),
-        (0.7, [corner(-1.0, -1.0, -1.0), corner(-1.0, -1.0, 1.0), corner(-1.0, 1.0, 1.0), corner(-1.0, 1.0, -1.0)]),
-        (1.0, [corner(-1.0, 1.0, 1.0), corner(1.0, 1.0, 1.0), corner(1.0, 1.0, -1.0), corner(-1.0, 1.0, -1.0)]),
-        (0.5, [corner(-1.0, -1.0, -1.0), corner(1.0, -1.0, -1.0), corner(1.0, -1.0, 1.0), corner(-1.0, -1.0, 1.0)]),
-        (0.9, [corner(-1.0, -1.0, 1.0), corner(1.0, -1.0, 1.0), corner(1.0, 1.0, 1.0), corner(-1.0, 1.0, 1.0)]),
-        (0.65, [corner(1.0, -1.0, -1.0), corner(-1.0, -1.0, -1.0), corner(-1.0, 1.0, -1.0), corner(1.0, 1.0, -1.0)]),
+        (
+            0.85,
+            [
+                corner(1.0, -1.0, 1.0),
+                corner(1.0, -1.0, -1.0),
+                corner(1.0, 1.0, -1.0),
+                corner(1.0, 1.0, 1.0),
+            ],
+        ),
+        (
+            0.7,
+            [
+                corner(-1.0, -1.0, -1.0),
+                corner(-1.0, -1.0, 1.0),
+                corner(-1.0, 1.0, 1.0),
+                corner(-1.0, 1.0, -1.0),
+            ],
+        ),
+        (
+            1.0,
+            [
+                corner(-1.0, 1.0, 1.0),
+                corner(1.0, 1.0, 1.0),
+                corner(1.0, 1.0, -1.0),
+                corner(-1.0, 1.0, -1.0),
+            ],
+        ),
+        (
+            0.5,
+            [
+                corner(-1.0, -1.0, -1.0),
+                corner(1.0, -1.0, -1.0),
+                corner(1.0, -1.0, 1.0),
+                corner(-1.0, -1.0, 1.0),
+            ],
+        ),
+        (
+            0.9,
+            [
+                corner(-1.0, -1.0, 1.0),
+                corner(1.0, -1.0, 1.0),
+                corner(1.0, 1.0, 1.0),
+                corner(-1.0, 1.0, 1.0),
+            ],
+        ),
+        (
+            0.65,
+            [
+                corner(1.0, -1.0, -1.0),
+                corner(-1.0, -1.0, -1.0),
+                corner(-1.0, 1.0, -1.0),
+                corner(1.0, 1.0, -1.0),
+            ],
+        ),
     ];
     for (brightness, q) in faces {
         let color = abgr(rgba, brightness);
@@ -60,34 +108,114 @@ pub fn build_rifle() -> Vec<ColorVert> {
     out
 }
 
-/// Bot body geometry in "feet space" (origin at the feet, +Y up, facing -Z),
-/// so `Bot::transform_scaled(1.0)` places and death-falls it correctly.
-pub fn build_bot_body() -> Vec<ColorVert> {
-    const UNIFORM: [u8; 4] = [168, 142, 92, 255]; // desert fatigues
-    const VEST: [u8; 4] = [70, 74, 62, 255];
-    const SKIN: [u8; 4] = [206, 168, 130, 255];
-    const GUNMETAL: [u8; 4] = [40, 40, 44, 255];
-    let mut out = Vec::new();
-    // Legs.
-    add_box(&mut out, Vec3::new(-11.0, 0.0, -6.0), Vec3::new(-2.0, 32.0, 6.0), UNIFORM);
-    add_box(&mut out, Vec3::new(2.0, 0.0, -6.0), Vec3::new(11.0, 32.0, 6.0), UNIFORM);
-    // Torso + vest.
-    add_box(&mut out, Vec3::new(-13.0, 32.0, -7.0), Vec3::new(13.0, 54.0, 7.0), VEST);
-    // Arms.
-    add_box(&mut out, Vec3::new(-17.0, 34.0, -5.0), Vec3::new(-13.0, 52.0, 5.0), UNIFORM);
-    add_box(&mut out, Vec3::new(13.0, 34.0, -5.0), Vec3::new(17.0, 52.0, 5.0), UNIFORM);
-    // Head.
-    add_box(&mut out, Vec3::new(-6.0, 54.0, -6.0), Vec3::new(6.0, 68.0, 6.0), SKIN);
-    // Rifle held across, pointing forward (-Z).
-    add_box(&mut out, Vec3::new(-2.0, 40.0, -26.0), Vec3::new(2.0, 44.0, -4.0), GUNMETAL);
-    out
+/// Immutable adjacent pose pairs, shared by all officers. The PSP GE blends
+/// the two quantized frames; CPU cost is independent of the vertex count.
+/// The cache is built/flushed once and remains alive for every in-flight list.
+pub struct OfficerRenderer {
+    pairs: Vec<[openstrike_character::PackedVertex; 2]>,
+    indices: Vec<u16>,
+    // A held pose reads only the first member of each cached pair. Doubling
+    // indices selects that member without another vertex cache or any upload.
+    held_indices: Vec<u16>,
+    pub visible: u32,
 }
-
-/// Draw all bots (alive and falling corpses).
-pub unsafe fn draw_bots(pool: &mut FramePool, body: &[ColorVert], bots: &[Bot]) {
-    for bot in bots {
-        // Fade corpses is desktop tint; here the shading bake is enough.
-        draw_color_tris(pool, body, bot.transform_scaled(1.0));
+impl OfficerRenderer {
+    pub fn new() -> Self {
+        let frames = openstrike_character::baked_frame_count();
+        let vertices = openstrike_character::vertex_count();
+        let mut pairs = Vec::with_capacity(frames * vertices);
+        for frame in 0..frames {
+            for i in 0..vertices {
+                pairs.push([
+                    openstrike_character::baked_vertex(frame, i),
+                    openstrike_character::baked_vertex((frame + 1).min(frames - 1), i),
+                ]);
+            }
+        }
+        assert!(pairs.len() * core::mem::size_of_val(&pairs[0]) <= 2 * 1024 * 1024);
+        let mut indices = alloc::vec![0; openstrike_character::index_count()];
+        openstrike_character::copy_indices(&mut indices);
+        assert!(vertices * 2 <= u16::MAX as usize);
+        let held_indices: Vec<u16> = indices.iter().map(|i| i * 2).collect();
+        unsafe {
+            sys::sceKernelDcacheWritebackRange(
+                pairs.as_ptr() as *const _,
+                (pairs.len() * core::mem::size_of_val(&pairs[0])) as u32,
+            );
+            sys::sceKernelDcacheWritebackRange(
+                indices.as_ptr() as *const _,
+                (indices.len() * 2) as u32,
+            );
+            sys::sceKernelDcacheWritebackRange(
+                held_indices.as_ptr() as *const _,
+                (held_indices.len() * 2) as u32,
+            );
+        }
+        Self {
+            pairs,
+            indices,
+            held_indices,
+            visible: 0,
+        }
+    }
+    pub unsafe fn draw(&mut self, _pool: &mut FramePool, bots: &[Bot], cam: &Camera3d) {
+        use core::ffi::c_void;
+        use psp::sys::{GuPrimitive, MatrixMode, VertexType};
+        let frustum = cam.frustum();
+        self.visible = 0;
+        for bot in bots {
+            // Includes the carried rifle, stride and fallen body at every yaw.
+            if !frustum.intersects_aabb(
+                bot.state.pos - Vec3::new(78.0, 42.0, 78.0),
+                bot.state.pos + Vec3::new(78.0, 45.0, 78.0),
+            ) {
+                continue;
+            }
+            let (clip, time) = bot.animation_sample();
+            let (a, b, mix) = openstrike_character::Pose::new(clip, time).frame_pair();
+            // Terminal one-shot frames hold their last pose. At a clip
+            // boundary the next cached frame belongs to another action.
+            let mix = if a == b { 0.0 } else { mix };
+            let held = mix == 0.0;
+            sys::sceGuMorphWeight(0, 1.0 - mix);
+            sys::sceGuMorphWeight(1, mix);
+            sys::sceGuSetMatrix(
+                MatrixMode::Model,
+                // GE normalizes signed 16-bit positions by 32768; OPCH
+                // uses 256 quantization steps per game unit.
+                &pocket3d_gu::to_psp_matrix(bot.transform_scaled(32768.0 / 256.0)),
+            );
+            sys::sceGuDisable(GuState::Texture2D);
+            sys::sceGuDrawArray(
+                GuPrimitive::Triangles,
+                VertexType::COLOR_8888
+                    | VertexType::VERTEX_16BIT
+                    | if held {
+                        VertexType::empty()
+                    } else {
+                        VertexType::VERTICES2
+                    }
+                    | VertexType::INDEX_16BIT
+                    | VertexType::TRANSFORM_3D,
+                self.indices.len() as i32,
+                if held {
+                    self.held_indices.as_ptr()
+                } else {
+                    self.indices.as_ptr()
+                } as *const c_void,
+                self.pairs
+                    .as_ptr()
+                    .add(a * openstrike_character::vertex_count()) as *const c_void,
+            );
+            self.visible += 1;
+        }
+        sys::sceGuMorphWeight(0, 1.0);
+        sys::sceGuMorphWeight(1, 0.0);
+        sys::sceGuEnable(GuState::Texture2D);
+        sys::sceGuSetMatrix(
+            MatrixMode::Model,
+            &pocket3d_gu::to_psp_matrix(Mat4::IDENTITY),
+        );
     }
 }
 
@@ -119,7 +247,13 @@ pub unsafe fn draw_effects(pool: &mut FramePool, sim: &StrikeSim, cam: &Camera3d
         let color = abgr_f(s.color, s.color[3]);
         let r = right * (s.size * 0.5);
         let u = up * (s.size * 0.5);
-        quad(s.pos - r - u, s.pos + r - u, s.pos + r + u, s.pos - r + u, color);
+        quad(
+            s.pos - r - u,
+            s.pos + r - u,
+            s.pos + r + u,
+            s.pos - r + u,
+            color,
+        );
     }
     for b in &beams {
         let color = abgr_f(b.color, b.color[3]);
@@ -130,7 +264,13 @@ pub unsafe fn draw_effects(pool: &mut FramePool, sim: &StrikeSim, cam: &Camera3d
 
     // Additive blend, depth-test but never depth-write (transparents).
     sys::sceGuEnable(GuState::Blend);
-    sys::sceGuBlendFunc(BlendOp::Add, BlendFactor::SrcAlpha, BlendFactor::Fix, 0, 0xffffff);
+    sys::sceGuBlendFunc(
+        BlendOp::Add,
+        BlendFactor::SrcAlpha,
+        BlendFactor::Fix,
+        0,
+        0xffffff,
+    );
     sys::sceGuDepthMask(1);
     draw_color_tris(pool, &verts, Mat4::IDENTITY);
     sys::sceGuDepthMask(0);

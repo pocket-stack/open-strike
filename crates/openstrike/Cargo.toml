@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+openstrike-character = { path = "../openstrike-character" }
 openstrike-core = { path = "../openstrike-core" }
 pocket3d = { workspace = true, features = ["bsp"] }
 pocket-mod = { workspace = true }
