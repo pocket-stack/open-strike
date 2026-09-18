@@ -149,6 +149,8 @@ pub fn run_screenshot(mut game: OpenStrike, args: &Args) -> Result<()> {
 
 pub fn run_script(game: OpenStrike, name: &str, args: &Args) -> Result<()> {
     match name {
+        "crossplay" => script_crossplay(game, args, false),
+        "crossplay-combat" => script_crossplay(game, args, true),
         "walk" => walk_script(game, args),
         "model" => model_script(game, args),
         "combat" => combat_script(game, args),
@@ -463,7 +465,9 @@ fn walk_script(mut game: OpenStrike, args: &Args) -> Result<()> {
         // Bob phase advances a hair across alphas (it is time-based), so allow
         // sub-visible wiggle; the broken (tick-anchored) gun drifts ~2 units.
         if max_drift > 0.2 {
-            bail!("FAIL viewmodel: gun drifts {max_drift:.3} units against the camera across render alphas");
+            bail!(
+                "FAIL viewmodel: gun drifts {max_drift:.3} units against the camera across render alphas"
+            );
         }
         println!("PASS viewmodel: camera-space drift across alphas {max_drift:.4} units");
     }
@@ -654,5 +658,79 @@ fn combat_script(mut game: OpenStrike, args: &Args) -> Result<()> {
         bail!("FAIL combat: alive_bots != 0 after kill");
     }
     println!("COMBAT SCRIPT PASSED");
+    Ok(())
+}
+
+/// Exercise the actual QuickJS bundle and native offload worker against a
+/// second Companion peer. This is transport evidence, not a PSP device test.
+fn script_crossplay(mut game: OpenStrike, args: &Args, combat: bool) -> Result<()> {
+    anyhow::ensure!(
+        game.network.is_some(),
+        "OPENSTRIKE_COMPANION_CONFIG required"
+    );
+    let mut guest = StrikeGuest::boot((480, 272))?;
+    let mut live = 0;
+    let mut positions = Vec::new();
+    let started = std::time::Instant::now();
+    for tick in 0..640 {
+        if combat {
+            if let Some(bot) = game.bots.first() {
+                let target = bot.state.pos;
+                aim_at(&mut game, target);
+            }
+        }
+        let input = openstrike_core::SimInput {
+            fire: combat && (192..320).contains(&tick),
+            move_x: if tick < 160 { 0.4 } else { 0.0 },
+            ..Default::default()
+        };
+        game.sim.tick(&game.map.collision, TICK, &input);
+        guest.turn(&mut game)?;
+        if game.network.as_ref().unwrap().status == "LIVE" {
+            live += 1;
+        }
+        if tick % 64 == 0 && !game.bots.is_empty() {
+            positions.push(game.bots[0].state.pos);
+        }
+        let next = started + std::time::Duration::from_secs_f64((tick + 1) as f64 / 64.0);
+        if let Some(left) = next.checked_duration_since(std::time::Instant::now()) {
+            std::thread::sleep(left);
+        }
+    }
+    anyhow::ensure!(
+        live > 300,
+        "crossplay did not stay live: {} live ticks, status {}, kills {}",
+        live,
+        game.network.as_ref().unwrap().status,
+        game.network.as_ref().unwrap().kills
+    );
+    anyhow::ensure!(
+        positions.len() > 4 && positions.iter().any(|p| p.distance(positions[0]) > 4.0),
+        "remote player did not move"
+    );
+    if combat {
+        anyhow::ensure!(
+            game.network.as_ref().unwrap().kills > 0
+                && game.bots.first().is_some_and(|b| b.alive()),
+            "combat did not kill and respawn the peer"
+        );
+    }
+    if let Some(path) = &args.screenshot {
+        let mut renderer = Headless::new(args.size)?;
+        game.upload_world(&renderer.gpu, &renderer.renderer);
+        if let Some(bot) = game.bots.first() {
+            let target = bot.state.pos;
+            aim_at(&mut game, target);
+        }
+        let time = game.time;
+        renderer.shot_with_hud(&mut game, Some(&mut guest), time, path)?;
+    }
+    println!(
+        "CROSSPLAY_GUEST_OK live_ticks={} remote_samples={} status={} kills={}",
+        live,
+        positions.len(),
+        game.network.as_ref().unwrap().status,
+        game.network.as_ref().unwrap().kills
+    );
     Ok(())
 }

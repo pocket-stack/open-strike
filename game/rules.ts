@@ -28,6 +28,7 @@ strike.onTick((s) => {
     phaseStart = s.time;
   }
   age = s.time - phaseStart;
+  if (s.network) return;
 
   if (s.phase === "starting" && s.time - phaseStart >= ROUND_FREEZE) {
     strike.setPhase("live");
@@ -42,6 +43,7 @@ strike.onTick((s) => {
 });
 
 strike.on("playerDied", () => {
+  if (strike.state().network) return;
   strike.addLoss();
   strike.setPhase("lost");
 });

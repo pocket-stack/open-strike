@@ -1,0 +1,12 @@
+[package]
+name = "openstrike-companion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+openstrike-core = { path = "../openstrike-core" }
+pocket3d-bsp.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow.workspace = true

@@ -1463,8 +1463,10 @@ dependencies = [
  "glam",
  "log",
  "openstrike-character",
+ "openstrike-companion",
  "openstrike-core",
  "pocket-mod",
+ "pocket-ui-surface",
  "pocket-ui-wgpu",
  "pocket3d",
  "pocketjs-core",
@@ -1480,12 +1482,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "openstrike-companion"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "openstrike-core",
+ "pocket3d-bsp",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "openstrike-core"
 version = "0.1.0"
 dependencies = [
  "glam",
  "libm",
  "pocket3d-bsp",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

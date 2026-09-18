@@ -13,7 +13,8 @@
       ],
       "enhances": [
         "input.analog.left",
-        "display.viewport.live"
+        "display.viewport.live",
+        "io.offload"
       ]
     }
   },

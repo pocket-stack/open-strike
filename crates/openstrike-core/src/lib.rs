@@ -16,6 +16,7 @@ pub mod bot;
 pub mod clock;
 pub mod energy;
 pub mod muzzle;
+pub mod net;
 pub mod presentation;
 pub mod projectile;
 pub mod sim;
@@ -79,3 +80,6 @@ pub(crate) fn sinf(x: f32) -> f32 {
 pub(crate) fn cosf(x: f32) -> f32 {
     libm::cosf(x)
 }
+
+#[cfg(test)]
+mod net_tests;

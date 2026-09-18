@@ -18,17 +18,25 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use anyhow::{Context, Result, anyhow};
-use pocket3d::gpu::{Gpu, OffscreenTarget};
 use pocket_mod::Guest;
 use pocket_mod::qjs::{Array, CatchResultExt, Function, Object};
 use pocket_ui_wgpu::{Blit, UiRenderer, UiSurface};
+use pocket3d::gpu::{Gpu, OffscreenTarget};
 
 use crate::bot::BotConfig;
 use crate::game::{Command, GameEvent, OpenStrike, Phase};
 use crate::weapon::WeaponConfig;
 
+const DESKTOP_TARGET: &str = if cfg!(target_os = "macos") {
+    "macos-app"
+} else {
+    "linux-app"
+};
+const DENSITY: u32 = if cfg!(target_os = "macos") { 2 } else { 1 };
+
 pub struct StrikeGuest {
     guest: Guest,
+    offload: Option<pocket_ui_surface::offload::OffloadWorker>,
     ui: UiSurface,
     commands: Rc<RefCell<Vec<Command>>>,
     /// Logical UI size (the core's viewport).
@@ -43,14 +51,18 @@ struct OverlayGfx {
     target_format: wgpu::TextureFormat,
 }
 
-/// Locate the PSP-baseline product bundle (`dist/pocket/psp`).
+/// Locate the product bundle for this desktop host contract.
 pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
     let mut roots: Vec<PathBuf> = Vec::new();
     if let Some(d) = std::env::var_os("OPENSTRIKE_UI_DIST") {
         roots.push(PathBuf::from(d));
     }
-    roots.push(PathBuf::from("dist/pocket/psp"));
-    roots.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../dist/pocket/psp"));
+    roots.push(PathBuf::from("dist/pocket").join(DESKTOP_TARGET));
+    roots.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../dist/pocket")
+            .join(DESKTOP_TARGET),
+    );
     for root in &roots {
         let js = root.join("openstrike.js");
         let pak = root.join("openstrike.pak");
@@ -59,8 +71,8 @@ pub fn find_bundle() -> Result<(PathBuf, PathBuf)> {
         }
     }
     Err(anyhow!(
-        "HUD/rules bundle not found — build it first: `bun run build:ui` \
-         (searched dist/pocket/psp next to the repo root; override with OPENSTRIKE_UI_DIST)"
+        "HUD/rules bundle not found — run `bun scripts/build-ui.ts --target {DESKTOP_TARGET}` \
+         (override the bundle directory with OPENSTRIKE_UI_DIST)"
     ))
 }
 
@@ -74,7 +86,8 @@ impl StrikeGuest {
         let pak =
             std::fs::read(&pak_path).with_context(|| format!("reading {}", pak_path.display()))?;
 
-        let ui = UiSurface::new((ui_size.0 as f32, ui_size.1 as f32));
+        let ui = UiSurface::new_with_density((ui_size.0 as f32, ui_size.1 as f32), DENSITY);
+        ui.set_identity(DESKTOP_TARGET, 4);
         ui.feed_pak(&pak);
         let guest = Guest::new()?;
         ui.mount(&guest)?;
@@ -82,9 +95,26 @@ impl StrikeGuest {
         let commands: Rc<RefCell<Vec<Command>>> = Rc::new(RefCell::new(Vec::new()));
         mount_strike(&guest, &commands)?;
 
+        let offload = std::env::var_os("OPENSTRIKE_COMPANION_CONFIG").map(|path| {
+            pocket_ui_surface::offload::OffloadWorker::spawn(move || {
+                let config = openstrike_companion::BridgeConfig::read(std::path::Path::new(&path));
+                let mut bridge = config.map(openstrike_companion::Bridge::new);
+                move |record: &str| match &mut bridge {
+                    Ok(bridge) => bridge.handle(record),
+                    Err(_) => {
+                        openstrike_companion::error_reply(record, "Invalid Companion configuration")
+                    }
+                }
+            })
+        });
+        if let Some(worker) = &offload {
+            worker.mount(&guest)?;
+        }
         guest.eval("openstrike", &bundle)?;
         if !guest.has_frame() {
-            return Err(anyhow!("bundle evaluated but installed no frame() — HUD missing?"));
+            return Err(anyhow!(
+                "bundle evaluated but installed no frame() — HUD missing?"
+            ));
         }
         log::info!(
             "guest: booted {} ({} bytes js) at {}x{}",
@@ -93,14 +123,27 @@ impl StrikeGuest {
             ui_size.0,
             ui_size.1
         );
-        Ok(StrikeGuest { guest, ui, commands, ui_size, gfx: None })
+        Ok(StrikeGuest {
+            guest,
+            offload,
+            ui,
+            commands,
+            ui_size,
+            gfx: None,
+        })
     }
 
     /// One guest turn for one game tick.
     pub fn turn(&self, game: &mut OpenStrike) -> Result<()> {
+        if let Some(worker) = &self.offload {
+            worker.begin_frame();
+        }
         let events = std::mem::take(&mut game.events);
         self.guest.with(|ctx| -> Result<()> {
-            let strike: Object = ctx.globals().get("strike").context("strike surface missing")?;
+            let strike: Object = ctx
+                .globals()
+                .get("strike")
+                .context("strike surface missing")?;
             let Ok(dispatch) = strike.get::<_, Function>("__dispatch") else {
                 return Ok(()); // no SDK loaded — state simply doesn't flow
             };
@@ -133,8 +176,13 @@ impl StrikeGuest {
         view: &wgpu::TextureView,
         target_format: wgpu::TextureFormat,
     ) -> Result<()> {
-        if self.gfx.as_ref().is_none_or(|g| g.target_format != target_format) {
-            let offscreen = OffscreenTarget::new(gpu, self.ui_size.0, self.ui_size.1);
+        if self
+            .gfx
+            .as_ref()
+            .is_none_or(|g| g.target_format != target_format)
+        {
+            let offscreen =
+                OffscreenTarget::new(gpu, self.ui_size.0 * DENSITY, self.ui_size.1 * DENSITY);
             let blit = Blit::new(
                 gpu,
                 &offscreen.view,
@@ -152,12 +200,15 @@ impl StrikeGuest {
         let gfx = self.gfx.as_mut().unwrap();
         let ui_size = self.ui_size;
         self.ui.with_ui(|ui| {
-            gfx.renderer.render(
+            let words = ui.draw().words.clone();
+            gfx.renderer.render_words_scaled(
                 gpu,
                 ui,
+                &words,
                 encoder,
                 &gfx.offscreen.view,
-                ui_size,
+                (ui_size.0 * DENSITY, ui_size.1 * DENSITY),
+                DENSITY as f32,
                 wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
             )
         })?;
@@ -207,6 +258,12 @@ fn build_state<'js>(
 ) -> pocket_mod::qjs::Result<Object<'js>> {
     let o = Object::new(ctx.clone())?;
     o.set("time", game.time as f64)?;
+    if let Some(network) = &game.network {
+        o.set("network", network.status)?;
+        if (game.time / openstrike_core::clock::TICK_SECONDS) as u32 % 4 == 0 {
+            o.set("networkRequest", network.request())?;
+        }
+    }
     o.set("phase", phase_name(game.phase))?;
     o.set("hp", game.player.health)?;
     o.set("alive", game.player.alive)?;
@@ -221,8 +278,16 @@ fn build_state<'js>(
     o.set("reloadFrac", reload_frac as f64)?;
     o.set("aliveBots", game.alive_bots() as u32)?;
     o.set("totalBots", game.bots.len() as u32)?;
-    o.set("wins", game.score.wins)?;
-    o.set("losses", game.score.losses)?;
+    o.set(
+        "wins",
+        game.network.as_ref().map_or(game.score.wins, |n| n.kills),
+    )?;
+    o.set(
+        "losses",
+        game.network
+            .as_ref()
+            .map_or(game.score.losses, |n| n.deaths),
+    )?;
     let v = game.player.state.vel;
     o.set("speed", ((v.x * v.x + v.z * v.z).sqrt()) as f64)?;
     Ok(o)
@@ -234,7 +299,12 @@ fn build_event<'js>(
 ) -> pocket_mod::qjs::Result<Object<'js>> {
     let o = Object::new(ctx.clone())?;
     match e {
-        GameEvent::Hit { bot, headshot, damage, fatal } => {
+        GameEvent::Hit {
+            bot,
+            headshot,
+            damage,
+            fatal,
+        } => {
             o.set("type", "hit")?;
             o.set("bot", *bot as u32)?;
             o.set("headshot", *headshot)?;
@@ -273,6 +343,12 @@ fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<(
         });
 
         let q = commands.clone();
+        op!("networkReply", move |raw: String| {
+            if raw.len() <= openstrike_core::net::PAYLOAD_LIMIT {
+                q.borrow_mut().push(Command::NetworkReply(raw));
+            }
+        });
+        let q = commands.clone();
         op!("setPhase", move |name: String| {
             if let Some(p) = parse_phase(&name) {
                 q.borrow_mut().push(Command::SetPhase(p));
@@ -282,7 +358,9 @@ fn mount_strike(guest: &Guest, commands: &Rc<RefCell<Vec<Command>>>) -> Result<(
         });
 
         let q = commands.clone();
-        op!("resetRound", move || q.borrow_mut().push(Command::ResetRound));
+        op!("resetRound", move || q
+            .borrow_mut()
+            .push(Command::ResetRound));
 
         let q = commands.clone();
         op!("addWin", move || q.borrow_mut().push(Command::AddWin));
@@ -335,5 +413,7 @@ fn get_i32(o: &Object, key: &str, default: i32) -> i32 {
 }
 
 fn get_u32(o: &Object, key: &str, default: u32) -> u32 {
-    o.get::<_, i32>(key).map(|v| v.max(0) as u32).unwrap_or(default)
+    o.get::<_, i32>(key)
+        .map(|v| v.max(0) as u32)
+        .unwrap_or(default)
 }

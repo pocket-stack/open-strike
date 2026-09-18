@@ -15,6 +15,7 @@
 // contract before Pocket's shared, versioned toolchain cache.
 
 import { $ } from "bun";
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
@@ -120,6 +121,7 @@ const llvm = toolchain.llvmBin;
 const env = {
   ...toolchain.environment,
   ...nativePocketContract(pocketPlan),
+  POCKETJS_OFFLOAD_SLOT: createHash("sha256").update("dev.pocket-stack.openstrike").digest("hex").slice(0, 16),
   OPENSTRIKE_CHARACTER_ASSET: characterAsset,
   OPENSTRIKE_MOD_PACKS: JSON.stringify(modPaths),
   OPENSTRIKE_INITIAL_MOD: process.env.OPENSTRIKE_INITIAL_MOD ?? "",
@@ -166,6 +168,8 @@ await $`${toolchain.rustup} run ${toolchain.manifest.rust.toolchain} cargo psp $
 
 const profile = release ? "release" : "debug";
 const ebootDir = `${pspDir}target/mipsel-sony-psp/${profile}`;
+const { verifyPspPrx } = await import("../vendor/pocketjs/tools/psp-prx.ts");
+verifyPspPrx(new Uint8Array(await Bun.file(`${ebootDir}/openstrike-psp.prx`).arrayBuffer()));
 mkdirSync(`${ebootDir}/maps`, { recursive: true });
 for (const f of readdirSync(`${ebootDir}/maps`).filter((f) => f.endsWith(".p3d") && !mapFiles.includes(f))) {
   rmSync(`${ebootDir}/maps/${f}`);

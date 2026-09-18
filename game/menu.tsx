@@ -44,7 +44,7 @@ const pretty = (raw: string): { tag: string; name: string } => {
 };
 
 export default function MainMenu() {
-  const [choosingMod, setChoosingMod] = createSignal(strike.mods.length > 1);
+  const [choosingMod, setChoosingMod] = createSignal(strike.mods.length > 1 || strike.networkSupported);
   return (
     <Show
       when={!choosingMod()}
@@ -95,6 +95,7 @@ function ModMenu(props: { onSelect(): void }) {
                 focusable
                 class={ROW_BASE}
                 onPress={() => {
+                  strike.selectNetwork(false);
                   if (strike.selectMod(index())) props.onSelect();
                 }}
                 style={{ width: 330 * S }}
@@ -114,6 +115,14 @@ function ModMenu(props: { onSelect(): void }) {
               </View>
             )}
           </For>
+          <Show when={strike.networkSupported}>
+            <View focusable class={ROW_BASE} style={{ width: 330 * S }} onPress={() => {
+              if (strike.selectMod(0)) { strike.selectNetwork(true); props.onSelect(); }
+            }}>
+              <Text class="text-sm font-bold" style={{ textColor: LIME, width: 86 * S }}>CROSSPLAY</Text>
+              <Text class="text-xs" style={{ textColor: DIM }}>1 VS 1 · MAC + PSP</Text>
+            </View>
+          </Show>
         </View>
         <Text class="text-xs mt-3 tracking-wide" style={{ textColor: DIM }}>
           ↑↓ SELECT · ○ CONTINUE
@@ -126,7 +135,7 @@ function ModMenu(props: { onSelect(): void }) {
 function MapMenu(props: { onBack(): void }) {
   const [loading, setLoading] = createSignal(-1);
   onButtonPress(0x0001, () => {
-    if (loading() < 0 && strike.mods.length > 1) props.onBack();
+    if (loading() < 0 && (strike.mods.length > 1 || strike.networkSupported)) props.onBack();
   });
   const deploy = (i: number) => {
     if (loading() >= 0) return;
@@ -169,7 +178,7 @@ function MapMenu(props: { onBack(): void }) {
             class={S >= 2 ? "text-sm tracking-wide" : "text-xs tracking-wide"}
             style={{ textColor: DIM }}
           >
-            {strike.mods.length > 1
+            {strike.networkSelected() ? "CROSSPLAY · CHOOSE COMPANION MAP" : strike.mods.length > 1
               ? strike.mod().title.toUpperCase()
               : "TACTICAL OPERATIONS"}
           </Text>

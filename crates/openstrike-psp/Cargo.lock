@@ -118,6 +118,8 @@ dependencies = [
  "glam",
  "libm",
  "pocket3d-bsp",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

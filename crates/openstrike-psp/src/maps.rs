@@ -10,8 +10,8 @@ use core::mem::MaybeUninit;
 
 mod read;
 
-use openstrike_core::StrikeSim;
 use openstrike_core::sim::Command;
+use openstrike_core::StrikeSim;
 use pocket3d_bsp::cooked;
 use pocket3d_gu::WorldRenderer;
 use psp::sys::{self, IoOpenFlags};
@@ -51,10 +51,9 @@ pub unsafe fn scan() -> (Vec<String>, u32) {
             }
             let raw = &ent.d_name;
             let len = raw.iter().position(|&c| c == 0).unwrap_or(raw.len());
-            let name = core::str::from_utf8(
-                core::slice::from_raw_parts(raw.as_ptr() as *const u8, len),
-            )
-            .unwrap_or("");
+            let name =
+                core::str::from_utf8(core::slice::from_raw_parts(raw.as_ptr() as *const u8, len))
+                    .unwrap_or("");
             // FAT-backed roots report 8.3-fitting names UPPERCASE
             // (DE_DUST2.P3D); every target filesystem here is
             // case-insensitive, so normalize to lowercase throughout.
@@ -95,7 +94,11 @@ pub unsafe fn load(
     // by successful reads becomes a byte slice for the cooked-map parser.
     let buffer = core::slice::from_raw_parts_mut(buf_ptr.cast::<MaybeUninit<u8>>(), buf_cap);
     let loaded = read::read_into(buffer, |target| {
-        let n = sys::sceIoRead(fd, target.as_mut_ptr().cast::<c_void>(), target.len() as u32);
+        let n = sys::sceIoRead(
+            fd,
+            target.as_mut_ptr().cast::<c_void>(),
+            target.len() as u32,
+        );
         if n < 0 {
             Err("map read failed")
         } else {
@@ -126,5 +129,10 @@ pub unsafe fn load(
     sim.spawn_bots(0);
     sim.weapon.reset();
     let world = WorldRenderer::new(map);
-    Ok(Game { sim, world })
+    let map_key = openstrike_core::net::map_key(data)?;
+    Ok(Game {
+        sim,
+        world,
+        map_key,
+    })
 }

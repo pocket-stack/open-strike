@@ -44,6 +44,13 @@ fn main() -> Result<()> {
     .copied()
     .context("map has no player spawns")?;
     let mut game = OpenStrike::new(map, spawn.pos, spawn.yaw, args.bots);
+    if std::env::var_os("OPENSTRIKE_COMPANION_CONFIG").is_some() {
+        let (cooked, _) =
+            pocket3d::bsp::cook::cook_map(&map_path, &args.wad_dirs(), &Default::default())?;
+        let identity = openstrike_core::net::map_key(&cooked).map_err(anyhow::Error::msg)?;
+        game.sim.bots.clear();
+        game.sim.network = Some(openstrike_core::net::Client::new(identity));
+    }
     if let Some(pos) = args.pos {
         game.player.state.pos = pos;
         game.player.prev_pos = pos;
@@ -65,7 +72,7 @@ fn main() -> Result<()> {
     }
 
     // Windowed play needs the product bundle (rules drive the round loop).
-    let strike = StrikeGuest::boot(WINDOW_SIZE)?;
+    let strike = StrikeGuest::boot((640, 360))?;
     run(
         AppConfig {
             title: "OpenStrike (Pocket3D)".into(),

@@ -22,3 +22,6 @@ libm = ["pocket3d-bsp/libm", "glam/libm"]
 pocket3d-bsp = { path = "../../vendor/pocketjs/engine/pocket3d/crates/pocket3d-bsp", default-features = false }
 glam = { version = "0.33", default-features = false }
 libm = "0.2"
+
+serde = { version = "1", default-features = false, features = ["derive", "alloc"] }
+serde_json = { version = "1", default-features = false, features = ["alloc"] }

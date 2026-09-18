@@ -149,6 +149,7 @@ export default function Hud() {
   let lHp = -1;
   let lAmmo = -1;
   let lPhase = "";
+  let lNetwork = "";
   let lBots = -1;
   let lTotal = -1;
   let lWins = -1;
@@ -163,19 +164,22 @@ export default function Hud() {
   onFrame(profileHud(() => {
     const s = strike.state();
 
-    if (s.phase !== lPhase) {
+    if (s.phase !== lPhase || (s.network ?? "") !== lNetwork) {
+      lNetwork = s.network ?? "";
       lPhase = s.phase;
       lCount = -1;
       paint(P.banner, s.phase === "live" ? 0 : 1);
       if (s.phase !== "live") {
         const color = s.phase === "won" ? LIME_N : s.phase === "lost" ? RED_N : INK_N;
-        hot.text(bannerTitle, s.phase === "won" ? "HOSTILES ELIMINATED" : s.phase === "lost" ? "YOU DIED" : "ROUND START");
+        hot.text(bannerTitle, s.network ?? (s.phase === "won" ? "HOSTILES ELIMINATED" : s.phase === "lost" ? "YOU DIED" : "ROUND START"));
         paint(P.title, color);
         paint(P.top, color);
         paint(P.bottom, color);
       }
     }
-    if (s.phase !== "live") {
+    if (s.network && s.phase !== "live") {
+      if (lCount !== -2) { hot.text(bannerSub, "CLASSIC · MAC + PSP · 1 VS 1"); lCount = -2; }
+    } else if (s.phase !== "live") {
       const left = (s.phase === "starting" ? ROUND_FREEZE : ROUND_END_PAUSE) - phaseAge();
       const c = Math.max(0, Math.ceil(left));
       if (c !== lCount) {

@@ -9,6 +9,8 @@
 import classicMod from "../mods/classic.json";
 
 export interface StrikeState {
+  network?: string;
+  networkRequest?: string;
   time: number;
   phase: "menu" | "starting" | "live" | "won" | "lost";
   hp: number;
@@ -70,7 +72,9 @@ export interface NativeStrike {
   __hudMark?(end: number): void;
   /** Cooked maps available to loadMap (index-aligned), host-injected. */
   maps?: string[];
-  loadMap?(index: number, modIndex?: number): void;
+  networkSupported?: boolean;
+  networkReply?(raw: string): void;
+  loadMap?(index: number, modIndex?: number, crossplay?: number): void;
   toMenu?(): void;
   setPhase(phase: string): void;
   resetRound(): void;
@@ -91,6 +95,7 @@ if (!native) {
 
 const mods: readonly ModDefinition[] = native.mods ?? [classicMod];
 let selectedMod = native.initialMod ?? 0;
+let crossplay = false;
 if (!Number.isInteger(selectedMod) || !mods[selectedMod])
   throw new Error("Invalid initial mod");
 
@@ -173,7 +178,11 @@ export const strike = {
   /** Map names the host can load (empty on hosts that boot pre-loaded). */
   maps: (native.maps ?? []) as readonly string[],
   /** Ask the host to load a cooked map and start a round (menu hosts). */
-  loadMap: (index: number) => native.loadMap?.(index, selectedMod),
+  loadMap: (index: number) => native.loadMap?.(index, selectedMod, Number(crossplay)),
+  networkSupported: native.networkSupported ?? false,
+  selectNetwork: (enabled: boolean) => { if (current.phase === "menu") crossplay = enabled; },
+  networkSelected: () => crossplay,
+  networkReply: (raw: string) => native.networkReply?.(raw),
   mods,
   mod: (): ModDefinition => mods[selectedMod],
   /** Selection is a menu operation; a running world keeps its resources. */

@@ -19,7 +19,7 @@ The full 3D game targets desktop (wgpu), PSP (sceGu), PS Vita
 (vita2d/GXM), and Nokia E7 (OpenGL ES 2). The bottom shot was captured
 on a real PSP.</em></p>
 
-A single-player CS-like FPS built on the **Pocket runtime family**: a Rust
+A CS-like FPS with offline bots and [Mac–PSP Companion crossplay](docs/CROSSPLAY.md), built on the **Pocket runtime family**: a Rust
 core (Pocket3D) simulates and renders; the *product* — round rules, weapon
 tables, difficulty, and the entire HUD — is JavaScript running in an embedded
 QuickJS guest. OpenStrike is the first specialized game runtime of
@@ -67,7 +67,8 @@ cd open-strike
 bun run setup      # installs the vendored framework deps + solid-js link
 bun run bootstrap  # install the pinned PSP toolchain into the shared cache
 bun run check:platforms
-bun run build:ui   # resolve PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun run build:ui   # PSP -> dist/pocket/psp/openstrike.{js,pak}
+bun scripts/build-ui.ts --target macos-app  # desktop UI, host ABI 4 at 2× density
 bun scripts/build-ui.ts --target vita
 ```
 
@@ -261,8 +262,8 @@ cargo run --release -p openstrike -- --maps-dir $MAPS --script lose   --screensh
 
 OpenStrike runs on an actual Sony PSP — same simulation, same JS rules, same
 JSX HUD, rendered by the sceGu backend (`pocket3d-gu`). Not a stripped-down
-demo: the identical `dist/pocket/psp/openstrike.js` bundle that drives the
-desktop build boots in QuickJS on the handheld. It ships as a proper EBOOT —
+demo: the same game sources compile into target-specific UI bundles for
+desktop and PSP, each checked against its native host contract. It ships as a proper EBOOT —
 branded XMB icon and backdrop, a main menu that lists every cooked map, and
 SELECT to return there mid-round.
 

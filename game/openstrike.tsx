@@ -4,6 +4,7 @@
 // artifact here.
 
 import "./rules.ts";
+import "./network.ts";
 import { mount } from "@pocketjs/framework/solid";
 import OpenStrikeScreen from "./screen.tsx";
 

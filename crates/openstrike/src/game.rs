@@ -144,7 +144,7 @@ impl OpenStrike {
 
     /// Full fixed-step game tick, from raw keyboard/mouse input.
     pub fn tick(&mut self, dt: f32, input: &Input) {
-        if input.key_pressed(KeyCode::KeyV) {
+        if self.sim.network.is_none() && input.key_pressed(KeyCode::KeyV) {
             self.sim.toggle_fly();
         }
         let mut sim_input = SimInput {

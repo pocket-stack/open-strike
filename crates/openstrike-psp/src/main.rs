@@ -39,7 +39,7 @@ mod strike;
 use core::ffi::c_void;
 
 use libquickjs_sys::*;
-use pocket3d_gu::{Camera3d, FramePool, WorldRenderer, sky};
+use pocket3d_gu::{sky, Camera3d, FramePool, WorldRenderer};
 use pocketjs_psp::{dbg, ffi, ge, host, pak};
 #[cfg(any(feature = "capture", feature = "motion-bench", feature = "idle-bench"))]
 use psp::sys::CtrlButtons;
@@ -52,8 +52,8 @@ use psp::sys::IoOpenFlags;
 use psp::sys::{self, CtrlMode, GuContextType, GuSyncBehavior, GuSyncMode, SceCtrlData};
 
 use input::PadInput;
-use openstrike_core::StrikeSim;
 use openstrike_core::clock::{FixedClock, TICK_SECONDS};
+use openstrike_core::StrikeSim;
 
 psp::module!("openstrike", 1, 1);
 
@@ -80,6 +80,7 @@ use openstrike_core::sim::Command;
 /// overwritten by the next load (see the frame loop's host_cmd handling).
 struct Game {
     sim: StrikeSim,
+    map_key: alloc::string::String,
     world: WorldRenderer<'static>,
 }
 
@@ -310,6 +311,7 @@ unsafe fn run() {
             }
             #[cfg(feature = "bench")]
             let after_dispatch = bench_now();
+            pocketjs_psp::offload::frame(sample.0.bits(), (sample.1 as u32) << 8 | sample.2 as u32);
             let mut args = [JS_NewInt32(ctx, sample.0.bits() as i32)];
             let r = JS_Call(ctx, frame_fn, global, 1, args.as_mut_ptr());
             if JS_ValueGetTag(r) == JS_TAG_EXCEPTION {
@@ -483,7 +485,11 @@ unsafe fn run() {
         // World lifecycle intents, applied OUTSIDE all world borrows (the
         // presented frame already showed the menu's LOADING state).
         match host_cmd {
-            Some(strike::HostCmd::LoadMap { map: i, mod_index }) if game.is_none() => {
+            Some(strike::HostCmd::LoadMap {
+                map: i,
+                mod_index,
+                crossplay,
+            }) if game.is_none() => {
                 if let Some(name) = map_names.get(i) {
                     match maps::load(name, map_buf_ptr, map_buf_cap, &boot_cfg) {
                         Ok(mut g) => {
@@ -498,6 +504,11 @@ unsafe fn run() {
                                 active_mod = mod_index;
                             }
                             pack.configure(&mut g.sim);
+                            if crossplay {
+                                g.sim.bots.clear();
+                                g.sim.network =
+                                    Some(openstrike_core::net::Client::new(g.map_key.clone()));
+                            }
                             game = Some(g);
                             #[cfg(feature = "bench")]
                             {
