@@ -75,6 +75,12 @@ If only previously cooked PSP maps are available, use
 `bun scripts/psp.ts --cooked-maps dist/maps --bench`. The pinned Pocket3D
 reader verifies every supplied `.p3d` before staging that map set beside the
 EBOOT. The default build still cooks from the BSP/WAD source directory.
+The cooker rejects missing textures on visible surfaces. For `cs_assault`,
+the source set must include **`cs_assault.wad`** as well as the Half-Life WADs.
+Place these files in the map's `support/` directory. Source builds cache a
+hash of the BSP, WAD inputs and cooker code; adding or replacing a WAD causes
+a new cook even when file timestamps are preserved. A pre-cooked `.p3d` with
+the cooker's missing-texture checkerboard is rejected before packaging.
 `OPENSTRIKE_COOKED_MAPS=dist/maps` selects the same input for
 `bun scripts/e2e-psp.ts` and `bun scripts/hw.ts`.
 

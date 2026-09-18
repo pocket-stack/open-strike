@@ -15,11 +15,12 @@
 // contract before Pocket's shared, versioned toolchain cache.
 
 import { $ } from "bun";
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { resolve } from "node:path";
 import { resolvePspBuildToolchain } from "../vendor/pocketjs/tools/psp-toolchain.ts";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 import { requestExtendedMemory } from "./psp-memory.ts";
+import { cookMap } from "./cook-map.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -86,11 +87,7 @@ for (const f of bsps) {
   const stem = f.slice(0, -4);
   const src = `${mapsRoot}/maps/${f}`;
   const p3d = `${repo}dist/maps/${stem}.p3d`;
-  if (existsSync(p3d) && statSync(p3d).mtimeMs > statSync(src).mtimeMs) continue;
-  console.log(`openstrike-psp: cooking ${stem}`);
-  await $`cargo run --release -q -p pocket3d-cook -- ${src} --wads ${mapsRoot}/support --subdivide 32 -o ${p3d} --verify`.cwd(
-    `${repo}vendor/pocketjs/engine/pocket3d`,
-  );
+  await cookMap(src, p3d, [`${mapsRoot}/support`], `${repo}vendor/pocketjs/engine/pocket3d`);
 }
 
 // Existing user-supplied maps are valid inputs only after the pinned engine

@@ -14,10 +14,10 @@ import {
   mkdirSync,
   readdirSync,
   rmSync,
-  statSync,
 } from "node:fs";
 import { compilePocketTarget, nativePocketContract } from "./pocket-contract.ts";
 import { packageVitaVpk } from "../vendor/pocketjs/tools/vita-package.ts";
+import { cookMap } from "./cook-map.ts";
 
 const repo = new URL("..", import.meta.url).pathname;
 const home = process.env.HOME ?? "";
@@ -69,11 +69,7 @@ for (const file of bsps) {
   const stem = file.slice(0, -4);
   const source = `${mapsRoot}/maps/${file}`;
   const cooked = `${repo}dist/maps/${stem}.p3d`;
-  if (existsSync(cooked) && statSync(cooked).mtimeMs > statSync(source).mtimeMs) continue;
-  console.log(`openstrike-vita: cooking ${stem}`);
-  await $`cargo run --release -q -p pocket3d-cook -- ${source} --wads ${mapsRoot}/support --subdivide 32 -o ${cooked} --verify`.cwd(
-    `${repo}vendor/pocketjs/engine/pocket3d`,
-  );
+  await cookMap(source, cooked, [`${mapsRoot}/support`], `${repo}vendor/pocketjs/engine/pocket3d`);
 }
 
 // Recreate the application overlay's map subtree so a removed source map
