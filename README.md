@@ -371,3 +371,9 @@ grows by appending, never by renumbering.
 - Bot character: see [assets/models/CREDITS.md](assets/models/CREDITS.md).
 - Map/texture data (`.bsp`/`.wad`) is © Valve and must be provided from your
   own copy of the game.
+
+### Author maps in Blender
+
+See [Blender maps](docs/BLENDER_MAPS.md) for the Blender → Valve 220 → GoldSrc BSP →
+Pocket3D toolchain and the editable WWDC24 atrium, stairs and presentation-hall
+scene. Generated maps and `.blend` files stay outside Git.

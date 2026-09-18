@@ -1,0 +1,114 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 17c1f0c..18006b5 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -208,7 +208,7 @@ include_directories(
+ # System config
+ #================
+ 
+-if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
++if (UNIX)
+     add_compile_options(
+         -Wall
+         -O2
+diff --git a/src/sdhlt/common/cmdlib.h b/src/sdhlt/common/cmdlib.h
+index fe3860f..cfdbf4a 100644
+--- a/src/sdhlt/common/cmdlib.h
++++ b/src/sdhlt/common/cmdlib.h
+@@ -37,7 +37,7 @@
+ #define PLATFORM_CAN_CALC_EXTENT
+ #endif
+ #ifdef VERSION_LINUX
+-#define PLATFORM_VERSIONSTRING "linux"
++#define PLATFORM_VERSIONSTRING "POSIX"
+ #define PLATFORM_CAN_CALC_EXTENT
+ #endif
+ #ifdef VERSION_OTHER
+diff --git a/src/sdhlt/common/mathlib.h b/src/sdhlt/common/mathlib.h
+index f2a92a8..0e650fd 100644
+--- a/src/sdhlt/common/mathlib.h
++++ b/src/sdhlt/common/mathlib.h
+@@ -161,7 +161,7 @@ inline unsigned int rotr(unsigned value, unsigned int amt)
+ 
+ inline bool    isPointFinite(const vec_t* p)
+ {
+-    if (finite(p[0]) && finite(p[1]) && finite(p[2]))
++    if (isfinite(p[0]) && isfinite(p[1]) && isfinite(p[2]))
+     {
+         return true;
+     }
+diff --git a/src/sdhlt/common/win32fix.h b/src/sdhlt/common/win32fix.h
+index e02acfe..b7729a7 100644
+--- a/src/sdhlt/common/win32fix.h
++++ b/src/sdhlt/common/win32fix.h
+@@ -6,7 +6,7 @@
+ #pragma once
+ #endif
+ 
+-#include <malloc.h>
++#include <stdlib.h>
+ 
+ /////////////////////////////
+ #ifdef SYSTEM_WIN32
+diff --git a/src/sdhlt/sdHLCSG/textures.cpp b/src/sdhlt/sdHLCSG/textures.cpp
+index acd7607..e86b8da 100644
+--- a/src/sdhlt/sdHLCSG/textures.cpp
++++ b/src/sdhlt/sdHLCSG/textures.cpp
+@@ -329,7 +329,7 @@ bool            TEX_InitFromWad()
+                 const std::string& texName = std::get<0>(texture);
+                 char* szWadFileName = std::get<1>(texture);
+                 int texLumps = std::get<2>(texture);
+-                Log("[%s] %s (%d)\n", szWadFileName, texName, texLumps);
++                Log("[%s] %s (%d)\n", szWadFileName, texName.c_str(), texLumps);
+             }
+             Log("---------------------------------\n\n");
+ 		}
+@@ -347,7 +347,7 @@ bool            TEX_InitFromWad()
+                     const std::string& texName = std::get<0>(texture);
+                     char* szWadFileName = std::get<1>(texture);
+                     int texBytes = std::get<2>(texture);
+-                    Log("[%s] %s (%d bytes)\n", szWadFileName, texName, texBytes);
++                    Log("[%s] %s (%d bytes)\n", szWadFileName, texName.c_str(), texBytes);
+                 }
+             }
+             Log("----------------------------------------------------\n");
+diff --git a/src/sdhlt/sdHLRAD/compress.h b/src/sdhlt/sdHLRAD/compress.h
+index f7e03d5..d6d25d9 100644
+--- a/src/sdhlt/sdHLRAD/compress.h
++++ b/src/sdhlt/sdHLRAD/compress.h
+@@ -39,7 +39,7 @@ extern const size_t vector_size[];
+ inline unsigned int bitget
+ 	(unsigned int i, unsigned int start, unsigned int end)
+ {
+-	return (i & ~(~0u << end)) >> start;
++	return (i & (end == 32 ? ~0u : ~(~0u << end))) >> start;
+ }
+ 
+ inline unsigned int bitput
+@@ -51,7 +51,12 @@ inline unsigned int bitput
+ inline unsigned int bitclr
+ 	(unsigned int i, unsigned int start, unsigned int end)
+ {
+-	return i & (~(~0u << start) | (~0u << end));
++	return i & (~(~0u << start) | (end == 32 ? 0u : (~0u << end)));
++}
++
++inline unsigned int bitshift_right (unsigned int value, unsigned int shift)
++{
++	return shift >= 32 ? 0u : value >> shift;
+ }
+ 
+ inline unsigned int float_iswrong
+@@ -192,9 +197,9 @@ inline void vector_compress
+ 		{
+ 			max = *p1>*p2? (*p1>*p3? *p1: *p3): (*p2>*p3? *p2: *p3);
+ 			max = float_istoobig (max)? 0x7F : float_istoosmall (max)? 0x60 : bitget (max, 23, 31);
+-			i1 = float_istoobig (*p1)? ~0u : (bitget (*p1, 0, 23) | bitput (1, 23, 24)) >> (1 + max - bitget (*p1, 23, 31));
+-			i2 = float_istoobig (*p2)? ~0u : (bitget (*p2, 0, 23) | bitput (1, 23, 24)) >> (1 + max - bitget (*p2, 23, 31));
+-			i3 = float_istoobig (*p3)? ~0u : (bitget (*p3, 0, 23) | bitput (1, 23, 24)) >> (1 + max - bitget (*p3, 23, 31));
++			i1 = float_istoobig (*p1)? ~0u : bitshift_right (bitget (*p1, 0, 23) | bitput (1, 23, 24), 1 + max - bitget (*p1, 23, 31));
++			i2 = float_istoobig (*p2)? ~0u : bitshift_right (bitget (*p2, 0, 23) | bitput (1, 23, 24), 1 + max - bitget (*p2, 23, 31));
++			i3 = float_istoobig (*p3)? ~0u : bitshift_right (bitget (*p3, 0, 23) | bitput (1, 23, 24), 1 + max - bitget (*p3, 23, 31));
+ 		}
+ 		if (t == VECTOR32)
+ 			m[0] = 0

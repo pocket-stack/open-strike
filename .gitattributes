@@ -1,0 +1,2 @@
+# Unified patches contain context indentation from the upstream source.
+scripts/*.patch -whitespace
